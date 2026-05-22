@@ -1,14 +1,1425 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="TRT, Peptide & Cycle Tracker - Track doses, health metrics, nutrition, and training" />
-    <title>TRT Tracker v2</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+  <meta name="theme-color" content="#080c12" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Protocol — TRT, Cycle & Health Tracker</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>
+    :root {
+      --accent:#00d4ff;--accent2:#7fff6b;--accent3:#ff6b35;--accent4:#c77dff;--accent5:#ffd166;--accent6:#ff6b9d;
+      --bg:#080c12;--surface:rgba(255,255,255,0.03);--surface2:rgba(255,255,255,0.05);
+      --border:rgba(255,255,255,0.07);--text:#e8f4f8;--muted:rgba(255,255,255,0.4);--faint:rgba(255,255,255,0.07);
+      --danger:#ff5050;--font:'DM Mono','Courier New',monospace;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html,body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;-webkit-tap-highlight-color:transparent}
+    ::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-thumb{background:rgba(0,212,255,0.2);border-radius:3px}
+    input,select,textarea,button{font-family:var(--font)}
+    input:focus,select:focus,textarea:focus{outline:none;border-color:rgba(0,212,255,0.4)!important}
+    button{cursor:pointer}
+    @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    .fade-up{animation:fadeUp 0.25s ease both}
+    @keyframes pulse{0%,100%{box-shadow:0 4px 24px rgba(0,212,255,0.4)}50%{box-shadow:0 4px 36px rgba(0,212,255,0.7)}}
+    .fab{animation:pulse 2.5s ease infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}.spin{display:inline-block;animation:spin 0.8s linear infinite}
+    .chart-tip{position:absolute;background:#0d1520;border:1px solid rgba(0,212,255,0.3);border-radius:6px;padding:6px 10px;font-size:11px;pointer-events:none;z-index:10;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,0.5)}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="env,react">
+const{useState,useEffect,useCallback,useRef,useMemo}=React;
+const LOCAL_KEY="protocol-trt-tracker-v2";
+const LEGACY_KEY="protocol-trt-tracker-v1";
+const GH_CONFIG_KEY="protocol-gh-config";
+const STRAVA_CONFIG_KEY="protocol-strava-config";
+const SCHEMA_VERSION=2;
+
+/* ---------- CONSTANTS ---------- */
+const SEEDED_COMPOUNDS=[
+  {id:"c-testc",name:"Testosterone Cypionate",type:"trt",unit:"mg",defaultDose:125,color:"#00d4ff",frequency:"2x_week"},
+  {id:"c-testE",name:"Testosterone Enanthate",type:"trt",unit:"mg",defaultDose:125,color:"#00d4ff",frequency:"2x_week"},
+  {id:"c-npp",name:"NPP",type:"trt",unit:"mg",defaultDose:25,color:"#7fff6b",frequency:"eod"},
+  {id:"c-primo",name:"Primobolan",type:"trt",unit:"mg",defaultDose:150,color:"#c77dff",frequency:"2x_week"},
+  {id:"c-mast",name:"Masteron",type:"trt",unit:"mg",defaultDose:100,color:"#ff6b9d",frequency:"eod"},
+  {id:"c-tbol",name:"Turinabol",type:"other",unit:"mg",defaultDose:20,color:"#ffd166",frequency:"daily"},
+  {id:"c-anavar",name:"Anavar",type:"other",unit:"mg",defaultDose:50,color:"#ffd166",frequency:"daily"},
+  {id:"c-winny",name:"Winstrol",type:"other",unit:"mg",defaultDose:25,color:"#ff6b35",frequency:"daily"},
+  {id:"c-eq",name:"Equipoise (Boldenone)",type:"trt",unit:"mg",defaultDose:300,color:"#7fff6b",frequency:"weekly"},
+  {id:"c-tren",name:"Trenbolone Acetate",type:"trt",unit:"mg",defaultDose:50,color:"#ff6b35",frequency:"eod"},
+  {id:"c-ment",name:"Trestolone (MENT)",type:"trt",unit:"mg",defaultDose:5,color:"#c77dff",frequency:"daily"},
+  {id:"c-hgh",name:"HGH",type:"peptide",unit:"IU",defaultDose:4,color:"#7fff6b",frequency:"daily"},
+  {id:"c-reta",name:"Retatrutide",type:"peptide",unit:"mg",defaultDose:1,color:"#c77dff",frequency:"weekly"},
+  {id:"c-proviron",name:"Proviron",type:"ai",unit:"mg",defaultDose:25,color:"#ff6b35",frequency:"daily"},
+  {id:"c-anastro",name:"Anastrozole",type:"ai",unit:"mg",defaultDose:0.25,color:"#ff6b35",frequency:"eod"},
+];
+const INJECTION_SITES=["Left Glute","Right Glute","Left Quad","Right Quad","Left Delt","Right Delt","Left VG","Right VG","Abdomen","SubQ Belly"];
+const FREQ_OPTIONS=[{value:"daily",label:"Daily"},{value:"eod",label:"Every Other Day"},{value:"2x_week",label:"2x / Week"},{value:"weekly",label:"Weekly"},{value:"biweekly",label:"Every 2 Weeks"},{value:"custom",label:"Custom"}];
+const TYPE_OPTIONS=[{value:"trt",label:"TRT",color:"#00d4ff"},{value:"peptide",label:"Peptide",color:"#7fff6b"},{value:"ai",label:"AI / Supp",color:"#ff6b35"},{value:"hcg",label:"hCG",color:"#c77dff"},{value:"other",label:"Other",color:"#ffd166"}];
+const SWATCHES=["#00d4ff","#7fff6b","#ff6b35","#c77dff","#ffd166","#ff6b9d","#ff5050","#85d5ff"];
+const PHASE_OPTIONS=[
+  {value:"cut",label:"Cut",color:"#00d4ff"},
+  {value:"grow",label:"Grow / Bulk",color:"#7fff6b"},
+  {value:"maintenance",label:"Maintenance",color:"#888"},
+  {value:"cruise",label:"Cruise / TRT",color:"#c77dff"},
+];
+
+// NHS-typical adult male reference ranges. Vary by lab — verify against your own lab's range.
+const NHS_RANGES={
+  test:{unit:"nmol/L",min:8.64,max:29.0,label:"Total Testosterone"},
+  shbg:{unit:"nmol/L",min:18.3,max:54.1,label:"SHBG"},
+  freeAndro:{unit:"%",min:24,max:104,label:"Free Androgen Index"},
+  lh:{unit:"IU/L",min:1.7,max:8.6,label:"LH"},
+  oest:{unit:"pmol/L",min:28,max:156,label:"Oestradiol"},
+  prolactin:{unit:"mU/L",min:86,max:324,label:"Prolactin"},
+  fsh:{unit:"IU/L",min:1.5,max:12.4,label:"FSH"},
+  albumin:{unit:"g/L",min:35,max:50,label:"Albumin"},
+  hdl:{unit:"mmol/L",min:1.0,max:null,label:"HDL Cholesterol",goodHigh:true},
+  ldl:{unit:"mmol/L",min:null,max:3.0,label:"LDL Cholesterol",goodLow:true},
+  totalChol:{unit:"mmol/L",min:null,max:5.0,label:"Total Cholesterol",goodLow:true},
+  alt:{unit:"U/L",min:10,max:40,label:"ALT"},
+  ast:{unit:"U/L",min:10,max:40,label:"AST"},
+};
+const BLOOD_KEYS=Object.keys(NHS_RANGES);
+const BP_TARGET={sys:120,dia:80};
+const BP_HIGH={sys:140,dia:90};
+
+/* ---------- HELPERS ---------- */
+const pad=n=>n<10?"0"+n:""+n;
+const fmt=d=>{const x=new Date(d);return x.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});};
+const fmtShort=d=>{const x=new Date(d);return x.toLocaleDateString("en-GB",{day:"2-digit",month:"short"});};
+const fmtT=d=>new Date(d).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
+const isoDate=d=>{const x=new Date(d);return x.getFullYear()+"-"+pad(x.getMonth()+1)+"-"+pad(x.getDate());};
+const daysSince=d=>Math.floor((Date.now()-new Date(d))/86400000);
+const today=()=>isoDate(new Date());
+const nowDT=()=>{const d=new Date();return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())+"T"+pad(d.getHours())+":"+pad(d.getMinutes());};
+const weekStart=d=>{const x=new Date(d);const day=x.getDay()||7;if(day!==1)x.setDate(x.getDate()-(day-1));x.setHours(0,0,0,0);return x;};
+const weekKey=d=>isoDate(weekStart(d));
+const phaseColor=p=>(PHASE_OPTIONS.find(x=>x.value===p)||{}).color||"#888";
+
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,8);}
+
+/* ---------- STORAGE ---------- */
+function emptyStore(){return{compounds:SEEDED_COMPOUNDS.slice(0,2),logs:[],cycles:[],bodyMetrics:[],bloods:[],macros:[],activities:[],schemaVersion:SCHEMA_VERSION};}
+
+function migrateV1(old){
+  return{
+    compounds:old.compounds||SEEDED_COMPOUNDS.slice(0,2),
+    logs:old.logs||[],
+    cycles:[],bodyMetrics:[],bloods:[],macros:[],activities:[],
+    schemaVersion:SCHEMA_VERSION,
+  };
+}
+
+/* ---------- GITHUB SYNC ---------- */
+async function ghGet(cfg){
+  const url=`https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/data.json`;
+  const res=await fetch(url,{headers:{Authorization:`Bearer ${cfg.token}`,Accept:"application/vnd.github+json"}});
+  if(res.status===404)return{content:null,sha:null};
+  if(!res.ok)throw new Error(`GitHub GET failed: ${res.status}`);
+  const j=await res.json();
+  if(!j.content)return{content:null,sha:j.sha||null};
+  try{
+    // atob returns raw bytes as a binary string; TextDecoder converts them as proper UTF-8.
+    // Without this step any non-ASCII character (e.g. ·) is misread and corrupts on each cycle.
+    const raw=atob(j.content.replace(/\n/g,""));
+    const bytes=new Uint8Array(raw.length);
+    for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
+    const decoded=JSON.parse(new TextDecoder().decode(bytes));
+    return{content:decoded,sha:j.sha};
+  }catch{
+    return{content:null,sha:j.sha||null};
+  }
+}
+async function ghPut(cfg,data,sha){
+  // GitHub requires the current SHA when updating an existing file.
+  // If we don't have it (e.g. first load after switching devices), fetch it now.
+  if(!sha){
+    try{const g=await ghGet(cfg);sha=g.sha;}catch{}
+  }
+  const url=`https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/data.json`;
+  const body={message:`sync: ${new Date().toISOString()}`,content:btoa(unescape(encodeURIComponent(JSON.stringify(data,null,2)))),...(sha&&{sha})};
+  const res=await fetch(url,{method:"PUT",headers:{Authorization:`Bearer ${cfg.token}`,Accept:"application/vnd.github+json","Content-Type":"application/json"},body:JSON.stringify(body)});
+  if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.message||`GitHub PUT failed: ${res.status}`);}
+  const j=await res.json();return j.content.sha;
+}
+
+/* ---------- MFP CSV PARSER ---------- */
+// Handles MFP Premium daily-summary export. Tolerates a few common column variants.
+function parseMFPCsv(text){
+  const lines=text.split(/\r?\n/).filter(l=>l.trim());
+  if(lines.length<2)throw new Error("CSV looks empty");
+  const split=l=>{const r=[];let cur="",q=false;for(const c of l){if(c==='"'){q=!q;}else if(c===","&&!q){r.push(cur);cur="";}else{cur+=c;}}r.push(cur);return r.map(x=>x.trim());};
+  const headers=split(lines[0]).map(h=>h.toLowerCase());
+  const fi=names=>headers.findIndex(h=>names.some(n=>h.includes(n)));
+  const di=fi(["date"]);
+  const ci=fi(["calories","kcal"]);
+  const pi=fi(["protein"]);
+  const cbi=fi(["carbohydrate","carbs"]);
+  const fti=fi(["fat"]);
+  if(di<0||ci<0)throw new Error("CSV missing Date or Calories columns");
+  const byDate={};
+  for(let i=1;i<lines.length;i++){
+    const row=split(lines[i]);
+    if(!row[di])continue;
+    const d=parseDateStr(row[di]);
+    if(!d)continue;
+    const num=v=>{const x=parseFloat(String(v).replace(/[^0-9.-]/g,""));return isNaN(x)?0:x;};
+    if(!byDate[d])byDate[d]={date:d,kcal:0,protein:0,carbs:0,fat:0,source:"mfp"};
+    byDate[d].kcal+=num(row[ci]);
+    if(pi>=0)byDate[d].protein+=num(row[pi]);
+    if(cbi>=0)byDate[d].carbs+=num(row[cbi]);
+    if(fti>=0)byDate[d].fat+=num(row[fti]);
+  }
+  return Object.values(byDate).map(e=>({id:uid(),...e,kcal:Math.round(e.kcal),protein:Math.round(e.protein),carbs:Math.round(e.carbs),fat:Math.round(e.fat)}));
+}
+function parseDateStr(s){
+  s=s.trim().replace(/"/g,"");
+  // try ISO (YYYY-MM-DD)
+  let m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m)return `${m[1]}-${m[2]}-${m[3]}`;
+  // try DD/MM/YYYY or MM/DD/YYYY (assume DD/MM since user is UK)
+  m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if(m)return `${m[3]}-${pad(parseInt(m[2]))}-${pad(parseInt(m[1]))}`;
+  // try Date.parse fallback
+  const d=new Date(s);
+  if(!isNaN(d))return isoDate(d);
+  return null;
+}
+
+/* ---------- STRAVA via Cloudflare Worker ---------- */
+async function stravaAuth(workerUrl){
+  // Worker handles full OAuth: redirect → callback → token exchange → returns refresh_token to us.
+  // We open the worker's /authorize endpoint which will redirect back to /strava-callback in our origin.
+  const redirect=window.location.origin+window.location.pathname.replace(/\/[^/]*$/,"/")+"index.html";
+  window.location.href=`${workerUrl.replace(/\/$/,"")}/authorize?redirect_uri=${encodeURIComponent(redirect)}`;
+}
+async function stravaFetch(workerUrl,refreshToken,path){
+  const res=await fetch(`${workerUrl.replace(/\/$/,"")}/api?path=${encodeURIComponent(path)}`,{
+    method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({refresh_token:refreshToken}),
+  });
+  if(!res.ok)throw new Error(`Strava error: ${res.status}`);
+  return res.json();
+}
+async function stravaPullActivities(workerUrl,refreshToken,sinceTs,onProgress){
+  // Default lookback: 5 years on first sync; subsequent syncs use lastSync timestamp.
+  const after=sinceTs
+    ?Math.floor(sinceTs/1000)
+    :Math.floor((Date.now()-1000*60*60*24*365*5)/1000);
+  const all=[];
+  let page=1;
+  while(page<=50){  // hard cap at 5,000 activities
+    if(onProgress)onProgress(all.length,page);
+    const batch=await stravaFetch(workerUrl,refreshToken,
+      `/api/v3/athlete/activities?after=${after}&per_page=100&page=${page}`);
+    if(!Array.isArray(batch)||!batch.length)break;
+    all.push(...batch);
+    if(batch.length<100)break;  // last page
+    page++;
+  }
+  return all.map(a=>({
+    id:uid(),stravaId:a.id,
+    date:a.start_date_local?a.start_date_local.slice(0,10):isoDate(a.start_date),
+    type:a.sport_type||a.type,name:a.name,
+    durationMin:Math.round((a.moving_time||0)/60),
+    distanceKm:+(((a.distance||0)/1000).toFixed(2)),
+    kj:a.kilojoules?Math.round(a.kilojoules):null,
+    source:"strava",
+  }));
+}
+
+/* ---------- SVG CHART PRIMITIVES ---------- */
+function useChartHover(){
+  const[tip,setTip]=useState(null);
+  return[tip,setTip];
+}
+
+function LineChart({data,series,xKey="x",height=220,formatY=v=>Math.round(v),formatX=v=>v,refRange=null,phaseBands=null,showGrid=true,showLegend=true,unit=""}){
+  const ref=useRef(null);
+  const[tip,setTip]=useState(null);
+  if(!data||!data.length)return <Empty msg="No data yet"/>;
+  const W=720,H=height,L=44,R=14,T=14,B=34;
+  const xs=data.map(d=>+new Date(d[xKey]));
+  const xMin=Math.min(...xs),xMax=Math.max(...xs);
+  const allY=[];
+  series.forEach(s=>data.forEach(d=>{const v=d[s.key];if(v!=null&&!isNaN(v))allY.push(v);}));
+  if(refRange){if(refRange.min!=null)allY.push(refRange.min);if(refRange.max!=null)allY.push(refRange.max);}
+  if(!allY.length)return <Empty msg="No values"/>;
+  let yMin=Math.min(...allY),yMax=Math.max(...allY);
+  if(yMin===yMax){yMin-=1;yMax+=1;}
+  const pad=(yMax-yMin)*0.1;yMin-=pad;yMax+=pad;
+  if(yMin>0&&yMin<(yMax-yMin)*0.3)yMin=0;
+  const sx=t=>L+(xMax===xMin?0:(t-xMin)/(xMax-xMin)*(W-L-R));
+  const sy=v=>T+(1-(v-yMin)/(yMax-yMin))*(H-T-B);
+  const ticks=4;
+  const yTicks=Array.from({length:ticks+1},(_,i)=>yMin+(yMax-yMin)*i/ticks);
+  const xTicks=Array.from({length:5},(_,i)=>xMin+(xMax-xMin)*i/4);
+
+  function onMove(e){
+    const rect=ref.current.getBoundingClientRect();
+    const x=(e.clientX-rect.left)*(W/rect.width);
+    if(x<L||x>W-R){setTip(null);return;}
+    const t=xMin+(x-L)/(W-L-R)*(xMax-xMin);
+    let nearest=null,bestD=Infinity;
+    data.forEach((d,i)=>{const dt=Math.abs(+new Date(d[xKey])-t);if(dt<bestD){bestD=dt;nearest={d,i};}});
+    if(nearest)setTip({x:sx(+new Date(nearest.d[xKey])),d:nearest.d});
+  }
+  function onLeave(){setTip(null);}
+
+  return(
+    <div style={{position:"relative",width:"100%"}}>
+      <svg ref={ref} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{width:"100%",height,display:"block",cursor:"crosshair"}} onMouseMove={onMove} onMouseLeave={onLeave} onTouchStart={onMove} onTouchMove={onMove} onTouchEnd={onLeave}>
+        {phaseBands&&phaseBands.map((b,i)=>{
+          const x1=sx(Math.max(xMin,+new Date(b.start)));
+          const x2=sx(Math.min(xMax,+new Date(b.end||xMax)));
+          if(x2<=x1)return null;
+          return <rect key={i} x={x1} y={T} width={x2-x1} height={H-T-B} fill={b.color} fillOpacity={0.06}/>;
+        })}
+        {refRange&&(refRange.min!=null||refRange.max!=null)&&(()=>{
+          const y1=refRange.max!=null?sy(refRange.max):T;
+          const y2=refRange.min!=null?sy(refRange.min):H-B;
+          return <rect x={L} y={Math.min(y1,y2)} width={W-L-R} height={Math.abs(y2-y1)} fill="#7fff6b" fillOpacity={0.05} stroke="#7fff6b" strokeOpacity={0.2} strokeDasharray="3 3"/>;
+        })()}
+        {showGrid&&yTicks.map((y,i)=><line key={i} x1={L} x2={W-R} y1={sy(y)} y2={sy(y)} stroke="rgba(255,255,255,0.04)"/>)}
+        {yTicks.map((y,i)=><text key={i} x={L-6} y={sy(y)+4} textAnchor="end" fontSize="9" fill="rgba(255,255,255,0.4)" fontFamily="DM Mono">{formatY(y)}</text>)}
+        {xTicks.map((t,i)=><text key={i} x={sx(t)} y={H-12} textAnchor="middle" fontSize="9" fill="rgba(255,255,255,0.4)" fontFamily="DM Mono">{formatX(new Date(t))}</text>)}
+        <line x1={L} x2={W-R} y1={H-B} y2={H-B} stroke="rgba(255,255,255,0.15)"/>
+        <line x1={L} x2={L} y1={T} y2={H-B} stroke="rgba(255,255,255,0.15)"/>
+        {series.map(s=>{
+          const pts=data.filter(d=>d[s.key]!=null&&!isNaN(d[s.key])).map(d=>[sx(+new Date(d[xKey])),sy(d[s.key])]);
+          if(!pts.length)return null;
+          const path=pts.map((p,i)=>(i===0?"M":"L")+p[0]+","+p[1]).join(" ");
+          return <g key={s.key}>
+            <path d={path} fill="none" stroke={s.color} strokeWidth="1.7" strokeLinejoin="round" strokeLinecap="round" opacity="0.9"/>
+            {pts.map((p,i)=><circle key={i} cx={p[0]} cy={p[1]} r="2.5" fill={s.color} stroke="#080c12" strokeWidth="1"/>)}
+          </g>;
+        })}
+        {tip&&<line x1={tip.x} x2={tip.x} y1={T} y2={H-B} stroke="rgba(0,212,255,0.4)" strokeDasharray="2 2"/>}
+      </svg>
+      {tip&&(()=>{
+        const items=series.map(s=>({label:s.label,color:s.color,val:tip.d[s.key]})).filter(x=>x.val!=null);
+        if(!items.length)return null;
+        return <div className="chart-tip" style={{left:`${(tip.x/W)*100}%`,top:8,transform:`translateX(${tip.x>W*0.7?'-100%':tip.x<W*0.3?'0':'-50%'})`}}>
+          <div style={{color:"var(--muted)",marginBottom:3}}>{fmt(tip.d[xKey])}</div>
+          {items.map((it,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:6}}><span style={{width:8,height:8,borderRadius:"50%",background:it.color,display:"inline-block"}}/><span>{it.label}: <strong>{formatY(it.val)}{unit}</strong></span></div>)}
+          {tip.d.cycle&&<div style={{color:"var(--muted)",marginTop:3,fontSize:10}}>{tip.d.cycle}</div>}
+        </div>;
+      })()}
+      {showLegend&&series.length>1&&(
+        <div style={{display:"flex",flexWrap:"wrap",gap:10,marginTop:6,fontSize:11}}>
+          {series.map(s=><span key={s.key} style={{display:"flex",alignItems:"center",gap:5,color:"var(--muted)"}}><span style={{width:9,height:9,borderRadius:"50%",background:s.color,display:"inline-block",boxShadow:`0 0 6px ${s.color}`}}/>{s.label}</span>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StackedAreaChart({data,series,xKey="x",height=220,formatY=v=>Math.round(v),formatX=v=>v,phaseBands=null,unit=""}){
+  const ref=useRef(null);const[tip,setTip]=useState(null);
+  if(!data||!data.length)return <Empty msg="No data yet"/>;
+  const W=720,H=height,L=44,R=14,T=14,B=34;
+  const xs=data.map(d=>+new Date(d[xKey]));
+  const xMin=Math.min(...xs),xMax=Math.max(...xs);
+  const totals=data.map(d=>series.reduce((a,s)=>a+(d[s.key]||0),0));
+  let yMax=Math.max(...totals,1);yMax*=1.1;
+  const sx=t=>L+(xMax===xMin?0:(t-xMin)/(xMax-xMin)*(W-L-R));
+  const sy=v=>T+(1-v/yMax)*(H-T-B);
+  function onMove(e){const rect=ref.current.getBoundingClientRect();const x=(e.clientX-rect.left)*(W/rect.width);if(x<L||x>W-R){setTip(null);return;}const t=xMin+(x-L)/(W-L-R)*(xMax-xMin);let n=null,bd=Infinity;data.forEach(d=>{const dt=Math.abs(+new Date(d[xKey])-t);if(dt<bd){bd=dt;n=d;}});if(n)setTip({x:sx(+new Date(n[xKey])),d:n});}
+  function onLeave(){setTip(null);}
+  // build stacks
+  const stacks=series.map((s,si)=>{
+    return data.map((d,i)=>{
+      let below=0;for(let j=0;j<si;j++)below+=(d[series[j].key]||0);
+      const v=d[s.key]||0;return{x:sx(+new Date(d[xKey])),y0:sy(below),y1:sy(below+v)};
+    });
+  });
+  const yTicks=Array.from({length:5},(_,i)=>yMax*i/4);
+  const xTicks=Array.from({length:5},(_,i)=>xMin+(xMax-xMin)*i/4);
+  return(
+    <div style={{position:"relative",width:"100%"}}>
+      <svg ref={ref} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{width:"100%",height,display:"block"}} onMouseMove={onMove} onMouseLeave={onLeave} onTouchStart={onMove} onTouchMove={onMove} onTouchEnd={onLeave}>
+        {phaseBands&&phaseBands.map((b,i)=>{const x1=sx(Math.max(xMin,+new Date(b.start)));const x2=sx(Math.min(xMax,+new Date(b.end||xMax)));if(x2<=x1)return null;return <rect key={i} x={x1} y={T} width={x2-x1} height={H-T-B} fill={b.color} fillOpacity={0.06}/>;})}
+        {yTicks.map((y,i)=><line key={i} x1={L} x2={W-R} y1={sy(y)} y2={sy(y)} stroke="rgba(255,255,255,0.04)"/>)}
+        {yTicks.map((y,i)=><text key={i} x={L-6} y={sy(y)+4} textAnchor="end" fontSize="9" fill="rgba(255,255,255,0.4)" fontFamily="DM Mono">{formatY(y)}</text>)}
+        {xTicks.map((t,i)=><text key={i} x={sx(t)} y={H-12} textAnchor="middle" fontSize="9" fill="rgba(255,255,255,0.4)" fontFamily="DM Mono">{formatX(new Date(t))}</text>)}
+        <line x1={L} x2={W-R} y1={H-B} y2={H-B} stroke="rgba(255,255,255,0.15)"/>
+        <line x1={L} x2={L} y1={T} y2={H-B} stroke="rgba(255,255,255,0.15)"/>
+        {series.map((s,si)=>{
+          const pts=stacks[si];
+          const top=pts.map((p,i)=>(i===0?"M":"L")+p.x+","+p.y1).join(" ");
+          const bot=pts.slice().reverse().map(p=>"L"+p.x+","+p.y0).join(" ");
+          return <path key={s.key} d={top+" "+bot+" Z"} fill={s.color} fillOpacity="0.55" stroke={s.color} strokeWidth="0.8"/>;
+        })}
+        {tip&&<line x1={tip.x} x2={tip.x} y1={T} y2={H-B} stroke="rgba(0,212,255,0.4)" strokeDasharray="2 2"/>}
+      </svg>
+      {tip&&(()=>{const items=series.map(s=>({label:s.label,color:s.color,val:tip.d[s.key]})).filter(x=>x.val);if(!items.length)return null;const total=items.reduce((a,x)=>a+x.val,0);return <div className="chart-tip" style={{left:`${(tip.x/W)*100}%`,top:8,transform:`translateX(${tip.x>W*0.7?'-100%':tip.x<W*0.3?'0':'-50%'})`}}>
+        <div style={{color:"var(--muted)",marginBottom:3}}>{fmt(tip.d[xKey])}</div>
+        {items.map((it,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:6}}><span style={{width:8,height:8,borderRadius:"50%",background:it.color}}/>{it.label}: <strong>{formatY(it.val)}{unit}</strong></div>)}
+        <div style={{borderTop:"1px solid var(--border)",marginTop:4,paddingTop:3}}>Total: <strong>{formatY(total)}{unit}</strong></div>
+      </div>;})()}
+      <div style={{display:"flex",flexWrap:"wrap",gap:10,marginTop:6,fontSize:11}}>
+        {series.map(s=><span key={s.key} style={{display:"flex",alignItems:"center",gap:5,color:"var(--muted)"}}><span style={{width:9,height:9,borderRadius:"50%",background:s.color,boxShadow:`0 0 6px ${s.color}`}}/>{s.label}</span>)}
+      </div>
+    </div>
+  );
+}
+
+function Empty({msg}){return <div style={{textAlign:"center",padding:"40px 0",color:"var(--muted)",fontSize:13}}>{msg}</div>;}
+
+/* ---------- STYLES ---------- */
+const S={
+  app:{minHeight:"100vh",background:"var(--bg)",color:"var(--text)",fontFamily:"var(--font)",position:"relative"},
+  bgGlow:{position:"fixed",inset:0,zIndex:0,pointerEvents:"none",background:"radial-gradient(ellipse 80% 50% at 20% -10%,rgba(0,212,255,0.07) 0%,transparent 60%),radial-gradient(ellipse 60% 40% at 90% 100%,rgba(127,255,107,0.04) 0%,transparent 60%)"},
+  wrap:{position:"relative",zIndex:1,maxWidth:920,margin:"0 auto",padding:"0 14px 110px"},
+  header:{padding:"24px 0 16px",borderBottom:"1px solid rgba(0,212,255,0.12)",marginBottom:24},
+  logo:{fontSize:22,fontWeight:700,letterSpacing:"0.12em",color:"var(--accent)",textTransform:"uppercase"},
+  subtitle:{fontSize:11,color:"rgba(0,212,255,0.5)",letterSpacing:"0.2em",marginTop:2},
+  nav:{display:"flex",gap:3,background:"rgba(255,255,255,0.03)",border:"1px solid var(--border)",borderRadius:8,padding:3,flexWrap:"wrap",marginTop:14},
+  navBtn:a=>({padding:"7px 11px",fontSize:11,letterSpacing:"0.08em",textTransform:"uppercase",background:a?"rgba(0,212,255,0.14)":"transparent",color:a?"var(--accent)":"var(--muted)",border:a?"1px solid rgba(0,212,255,0.28)":"1px solid transparent",borderRadius:6,transition:"all 0.15s",flex:"1 1 auto",fontWeight:600}),
+  card:{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:18,marginBottom:14},
+  statGrid:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10,marginBottom:18},
+  statCard:r=>({background:`rgba(${r},0.06)`,border:`1px solid rgba(${r},0.2)`,borderRadius:10,padding:"14px 16px"}),
+  statNum:r=>({fontSize:28,fontWeight:700,color:`rgb(${r})`,lineHeight:1}),
+  statLabel:{fontSize:9,color:"var(--muted)",letterSpacing:"0.15em",textTransform:"uppercase",marginTop:4},
+  tag:c=>({display:"inline-block",padding:"2px 9px",borderRadius:20,fontSize:10,fontWeight:700,letterSpacing:"0.12em",textTransform:"uppercase",background:`${c}22`,color:c,border:`1px solid ${c}44`,whiteSpace:"nowrap"}),
+  dot:c=>({width:10,height:10,borderRadius:"50%",background:c,flexShrink:0,boxShadow:`0 0 8px ${c}`}),
+  fab:{position:"fixed",bottom:22,right:22,zIndex:100,background:"linear-gradient(135deg,#00d4ff,#0099cc)",color:"#080c12",border:"none",borderRadius:"50%",width:56,height:56,fontSize:28,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700},
+  modal:{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,0.8)",display:"flex",alignItems:"center",justifyContent:"center",padding:14},
+  modalBox:{background:"#0d1520",border:"1px solid rgba(0,212,255,0.2)",borderRadius:14,padding:24,width:"100%",maxWidth:460,boxShadow:"0 0 60px rgba(0,212,255,0.08)",maxHeight:"92vh",overflowY:"auto"},
+  modalTitle:{fontSize:15,fontWeight:700,color:"var(--accent)",letterSpacing:"0.1em",marginBottom:18,textTransform:"uppercase"},
+  label:{fontSize:10,color:"var(--muted)",letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:5,display:"block",marginTop:2},
+  input:{width:"100%",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,padding:"9px 12px",color:"var(--text)",fontSize:14,fontFamily:"inherit",marginBottom:12},
+  select:{width:"100%",background:"#0d1520",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,padding:"9px 12px",color:"var(--text)",fontSize:14,fontFamily:"inherit",marginBottom:12},
+  btn:c=>({padding:"10px 18px",fontSize:11,letterSpacing:"0.12em",textTransform:"uppercase",background:c||"rgba(0,212,255,0.12)",color:"var(--accent)",border:"1px solid rgba(0,212,255,0.3)",borderRadius:8,fontFamily:"inherit",fontWeight:700}),
+  btnCancel:{padding:"10px 18px",fontSize:11,letterSpacing:"0.12em",textTransform:"uppercase",background:"transparent",color:"var(--muted)",border:"1px solid var(--border)",borderRadius:8,fontFamily:"inherit",marginRight:8},
+  btnDanger:{background:"none",border:"none",color:"rgba(255,80,80,0.5)",fontSize:12,padding:0,fontFamily:"inherit"},
+  siteChip:a=>({padding:"5px 11px",borderRadius:6,fontSize:11,background:a?"rgba(0,212,255,0.14)":"rgba(255,255,255,0.04)",color:a?"var(--accent)":"var(--muted)",border:a?"1px solid rgba(0,212,255,0.3)":"1px solid var(--faint)",letterSpacing:"0.04em",fontFamily:"inherit"}),
+  sectionH:{fontSize:10,color:"var(--muted)",letterSpacing:"0.2em",textTransform:"uppercase",marginBottom:12,marginTop:6},
+  syncBar:s=>({display:"flex",alignItems:"center",gap:10,padding:"9px 13px",borderRadius:8,marginBottom:14,fontSize:11,
+    background:s==="ok"?"rgba(127,255,107,0.07)":s==="error"?"rgba(255,107,53,0.07)":s==="syncing"?"rgba(0,212,255,0.07)":"rgba(255,255,255,0.03)",
+    border:s==="ok"?"1px solid rgba(127,255,107,0.25)":s==="error"?"1px solid rgba(255,107,53,0.25)":s==="syncing"?"1px solid rgba(0,212,255,0.2)":"1px solid var(--border)",
+    color:s==="ok"?"#7fff6b":s==="error"?"#ff6b35":s==="syncing"?"var(--accent)":"var(--muted)"}),
+  subnav:{display:"flex",gap:4,marginBottom:18,flexWrap:"wrap"},
+  subnavBtn:a=>({padding:"6px 12px",fontSize:10,letterSpacing:"0.12em",textTransform:"uppercase",background:a?"rgba(127,255,107,0.12)":"transparent",color:a?"#7fff6b":"var(--muted)",border:a?"1px solid rgba(127,255,107,0.3)":"1px solid var(--border)",borderRadius:6,fontFamily:"inherit",fontWeight:600}),
+};
+
+/* ---------- MAIN APP ---------- */
+function App(){
+  const[tab,setTab]=useState("dashboard");
+  const[healthSubtab,setHealthSubtab]=useState("body");
+  const[chartsSubtab,setChartsSubtab]=useState("doses");
+  const[store,setStore]=useState(emptyStore());
+  const[modal,setModal]=useState(null);
+  const[ghConfig,setGhConfig]=useState({owner:"",repo:"TRT",token:""});
+  const[stravaConfig,setStravaConfig]=useState({workerUrl:"",refreshToken:"",lastSync:null});
+  const[syncStatus,setSyncStatus]=useState("idle");
+  const[syncMsg,setSyncMsg]=useState("");
+  const shaRef=useRef(null);
+  const saveTimer=useRef(null);
+  const loaded=useRef(false);
+
+  const setStorePart=(k,fn)=>setStore(s=>({...s,[k]:fn(s[k])}));
+  const isGhConfigured=()=>ghConfig.owner&&ghConfig.repo&&ghConfig.token;
+
+  /* ---------- LOAD ---------- */
+  useEffect(()=>{
+    try{
+      const sc=JSON.parse(localStorage.getItem(STRAVA_CONFIG_KEY)||"{}");
+      if(sc.workerUrl)setStravaConfig({workerUrl:sc.workerUrl||"",refreshToken:sc.refreshToken||"",lastSync:sc.lastSync||null});
+    }catch{}
+    // Strava OAuth callback — read from localStorage directly because React state
+    // hasn't flushed yet here, so spreading stravaConfig would lose workerUrl.
+    const params=new URLSearchParams(window.location.search);
+    if(params.get("strava_refresh")){
+      const rt=params.get("strava_refresh");
+      const saved=JSON.parse(localStorage.getItem(STRAVA_CONFIG_KEY)||"{}");
+      const cfg={...saved,refreshToken:rt};
+      setStravaConfig(cfg);
+      localStorage.setItem(STRAVA_CONFIG_KEY,JSON.stringify(cfg));
+      window.history.replaceState({},"",window.location.pathname);
+    }
+    try{
+      const savedCfg=JSON.parse(localStorage.getItem(GH_CONFIG_KEY));
+      if(savedCfg?.token){setGhConfig(savedCfg);loadFromGitHub(savedCfg);return;}
+    }catch{}
+    loadFromLocal();
+  },[]);
+
+  function loadFromLocal(){
+    let data=null;
+    try{data=JSON.parse(localStorage.getItem(LOCAL_KEY));}catch{}
+    if(!data){
+      // try v1 migration
+      try{
+        const v1=JSON.parse(localStorage.getItem(LEGACY_KEY));
+        if(v1)data=migrateV1(v1);
+      }catch{}
+    }
+    if(data)setStore(normalize(data));
+    loaded.current=true;
+  }
+
+  async function loadFromGitHub(cfg){
+    setSyncStatus("syncing");setSyncMsg("Fetching from GitHub…");
+    try{
+      const{content,sha}=await ghGet(cfg);
+      if(content){
+        setStore(normalize(content.schemaVersion?content:migrateV1(content)));
+        shaRef.current=sha;setSyncStatus("ok");
+        setSyncMsg(`Loaded · ${new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}`);
+      }else{
+        loadFromLocal();setSyncStatus("ok");setSyncMsg("Connected · no remote data yet");
+      }
+    }catch(e){setSyncStatus("error");setSyncMsg(`GitHub: ${e.message}`);loadFromLocal();}
+    loaded.current=true;
+  }
+
+  function normalize(d){
+    return{
+      compounds:d.compounds||[],
+      logs:d.logs||[],
+      cycles:d.cycles||[],
+      bodyMetrics:d.bodyMetrics||[],
+      bloods:d.bloods||[],
+      macros:d.macros||[],
+      activities:d.activities||[],
+      schemaVersion:SCHEMA_VERSION,
+    };
+  }
+
+  /* ---------- SAVE ---------- */
+  const persist=useCallback(s=>{
+    if(!loaded.current)return;
+    localStorage.setItem(LOCAL_KEY,JSON.stringify(s));
+    if(isGhConfigured()){
+      clearTimeout(saveTimer.current);
+      saveTimer.current=setTimeout(()=>pushToGitHub(s),1500);
+    }
+  },[ghConfig]);
+
+  async function pushToGitHub(s){
+    setSyncStatus("syncing");setSyncMsg("Saving to GitHub…");
+    try{const newSha=await ghPut(ghConfig,s,shaRef.current);shaRef.current=newSha;setSyncStatus("ok");setSyncMsg(`Synced · ${new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}`);}
+    catch(e){setSyncStatus("error");setSyncMsg(`Sync: ${e.message}`);}
+  }
+  useEffect(()=>{persist(store);},[store]);
+
+  async function manualSync(){
+    if(!isGhConfigured()){setModal({type:"settings"});return;}
+    setSyncStatus("syncing");setSyncMsg("Pulling…");
+    try{const{content,sha}=await ghGet(ghConfig);if(content){setStore(normalize(content));shaRef.current=sha;setSyncStatus("ok");setSyncMsg(`Pulled · ${new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}`);}}
+    catch(e){setSyncStatus("error");setSyncMsg(`Sync: ${e.message}`);}
+  }
+
+  function saveGhConfig(cfg){
+    localStorage.setItem(GH_CONFIG_KEY,JSON.stringify(cfg));
+    setGhConfig(cfg);loadFromGitHub(cfg);
+  }
+  function clearGhConfig(){
+    localStorage.removeItem(GH_CONFIG_KEY);
+    setGhConfig({owner:"",repo:"TRT",token:""});shaRef.current=null;
+    setSyncStatus("idle");setSyncMsg("");
+  }
+
+  /* ---------- ACTIONS ---------- */
+  function addLog(form){
+    const c=store.compounds.find(x=>x.id===form.compoundId);
+    if(!c||!form.dose)return;
+    setStorePart("logs",l=>[{
+      id:uid(),compoundId:c.id,compoundName:c.name,dose:parseFloat(form.dose),unit:c.unit,
+      site:form.site||"",notes:form.notes||"",
+      datetime:form.datetime?new Date(form.datetime).toISOString():new Date().toISOString(),
+      color:c.color,type:c.type,
+    },...l]);
+    setModal(null);
+  }
+  function addCompound(form){
+    if(!form.name||!form.defaultDose)return;
+    setStorePart("compounds",c=>[...c,{...form,id:uid(),defaultDose:parseFloat(form.defaultDose)}]);
+    setModal(null);
+  }
+  function addCycle(form){
+    if(!form.name||!form.startDate)return;
+    setStorePart("cycles",c=>[...c,{...form,id:uid()}]);
+    setModal(null);
+  }
+  function updateCycle(id,form){
+    setStorePart("cycles",c=>c.map(x=>x.id===id?{...x,...form}:x));setModal(null);
+  }
+  function addBody(form){
+    if(!form.date||(!form.weight&&!form.bf))return;
+    const w=form.weight?parseFloat(form.weight):null;
+    const bf=form.bf?parseFloat(form.bf)/100:null;
+    setStorePart("bodyMetrics",b=>[{id:uid(),date:form.date,weight:w,bf,notes:form.notes||""},...b.filter(x=>x.date!==form.date)].sort((a,b)=>b.date.localeCompare(a.date)));
+    setModal(null);
+  }
+  function addBloods(form){
+    if(!form.date)return;
+    const e={id:uid(),date:form.date};
+    if(form.bp_sys)e.bp_sys=parseFloat(form.bp_sys);
+    if(form.bp_dia)e.bp_dia=parseFloat(form.bp_dia);
+    BLOOD_KEYS.forEach(k=>{if(form[k]!==""&&form[k]!=null&&!isNaN(parseFloat(form[k])))e[k]=parseFloat(form[k]);});
+    if(form.notes)e.notes=form.notes;
+    setStorePart("bloods",b=>[e,...b.filter(x=>x.date!==form.date||x.id===form.id)].sort((a,b)=>b.date.localeCompare(a.date)));
+    setModal(null);
+  }
+  function addMacros(form){
+    if(!form.date||!form.kcal)return;
+    const e={id:uid(),date:form.date,kcal:parseFloat(form.kcal),protein:parseFloat(form.protein||0),carbs:parseFloat(form.carbs||0),fat:parseFloat(form.fat||0),source:"manual"};
+    setStorePart("macros",m=>[e,...m.filter(x=>x.date!==form.date)].sort((a,b)=>b.date.localeCompare(a.date)));
+    setModal(null);
+  }
+  async function importMfpCsv(file){
+    try{const text=await file.text();const rows=parseMFPCsv(text);
+      if(!rows.length){alert("No rows parsed from this CSV");return;}
+      setStorePart("macros",m=>{
+        const dates=new Set(rows.map(r=>r.date));
+        return[...rows,...m.filter(x=>!dates.has(x.date))].sort((a,b)=>b.date.localeCompare(a.date));
+      });
+      alert(`Imported ${rows.length} days of macros from MFP.`);
+    }catch(e){alert("CSV import failed: "+e.message);}
+  }
+  async function _doStravaSync(sinceTs,replaceAll){
+    if(!stravaConfig.workerUrl||!stravaConfig.refreshToken){
+      alert("Configure Strava in Settings first.");return;
+    }
+    try{
+      setSyncStatus("syncing");setSyncMsg("Pulling Strava activities…");
+      const acts=await stravaPullActivities(
+        stravaConfig.workerUrl,stravaConfig.refreshToken,sinceTs,
+        (loaded,page)=>setSyncMsg(`Fetching Strava… page ${page} (${loaded} so far)`));
+      if(replaceAll){
+        // Full resync — replace everything
+        setStorePart("activities",()=>[...acts].sort((x,y)=>y.date.localeCompare(x.date)));
+      }else{
+        const existing=new Set(store.activities.map(a=>a.stravaId));
+        const fresh=acts.filter(a=>!existing.has(a.stravaId));
+        setStorePart("activities",a=>[...fresh,...a].sort((x,y)=>y.date.localeCompare(x.date)));
+      }
+      const newCfg={...stravaConfig,lastSync:Date.now()};
+      setStravaConfig(newCfg);localStorage.setItem(STRAVA_CONFIG_KEY,JSON.stringify(newCfg));
+      setSyncStatus("ok");setSyncMsg(`Strava: ${acts.length} activities loaded`);
+    }catch(e){setSyncStatus("error");setSyncMsg(`Strava: ${e.message}`);}
+  }
+  // Incremental — only fetches since last sync
+  async function syncStrava(){return _doStravaSync(stravaConfig.lastSync,false);}
+  // Full resync — ignores lastSync, replaces all stored activities
+  async function syncStravaFull(){return _doStravaSync(null,true);}
+  async function importHistorical(){
+    try{
+      setSyncStatus("syncing");setSyncMsg("Loading historical data…");
+      const r=await fetch("./seed-data.json",{cache:"no-store"});
+      if(!r.ok)throw new Error("seed-data.json not found in this folder");
+      const seed=await r.json();
+      // map compound names to IDs we have
+      const byName={};store.compounds.forEach(c=>{byName[c.name.toLowerCase()]=c;});
+      // Pre-seed any missing canonical compounds
+      let newCompounds=[...store.compounds];
+      SEEDED_COMPOUNDS.forEach(sc=>{if(!byName[sc.name.toLowerCase()]){newCompounds.push({...sc});byName[sc.name.toLowerCase()]=sc;}});
+      // map xlsx logs to event-shaped logs
+      const newLogs=seed.logs.map(l=>{
+        const c=byName[l.compound.toLowerCase()];
+        if(!c)return null;
+        return{id:uid(),compoundId:c.id,compoundName:c.name,dose:l.dose,unit:l.unit,
+          site:"",notes:`imported - ${l.cycle}`,
+          datetime:new Date(l.date+"T09:00:00").toISOString(),
+          color:c.color,type:c.type};
+      }).filter(Boolean);
+      const newCycles=seed.cycles.map(c=>({id:uid(),name:c.name,phase:c.phase||"cut",startDate:c.startDate,endDate:c.endDate,notes:""}));
+      const newBody=seed.bodyMetrics.map(b=>({id:uid(),date:b.date,weight:b.weight,bf:b.bf,notes:""}));
+      const newBloods=seed.bloods.map(b=>({id:uid(),...b}));
+      // merge — avoid duplicates
+      setStore(s=>{
+        const lDates=new Set(s.logs.map(x=>x.datetime.slice(0,10)+x.compoundId));
+        const bDates=new Set(s.bodyMetrics.map(x=>x.date));
+        const blDates=new Set(s.bloods.map(x=>x.date));
+        return{
+          ...s,
+          compounds:newCompounds,
+          logs:[...s.logs,...newLogs.filter(l=>!lDates.has(l.datetime.slice(0,10)+l.compoundId))].sort((a,b)=>b.datetime.localeCompare(a.datetime)),
+          cycles:[...s.cycles,...newCycles].filter((c,i,a)=>a.findIndex(x=>x.name===c.name)===i),
+          bodyMetrics:[...newBody.filter(b=>!bDates.has(b.date)),...s.bodyMetrics].sort((a,b)=>b.date.localeCompare(a.date)),
+          bloods:[...newBloods.filter(b=>!blDates.has(b.date)),...s.bloods].sort((a,b)=>b.date.localeCompare(a.date)),
+        };
+      });
+      setSyncStatus("ok");setSyncMsg(`Imported ${newLogs.length} doses, ${newBody.length} body, ${newBloods.length} bloods, ${newCycles.length} cycles`);
+      setModal(null);
+    }catch(e){setSyncStatus("error");setSyncMsg(`Import: ${e.message}`);alert("Import failed: "+e.message);}
+  }
+  function addMissingSeededCompounds(){
+    const have=new Set(store.compounds.map(c=>c.name.toLowerCase()));
+    const missing=SEEDED_COMPOUNDS.filter(s=>!have.has(s.name.toLowerCase()));
+    if(!missing.length){alert("All seeded compounds are already added.");return;}
+    setStorePart("compounds",c=>[...c,...missing.map(m=>({...m,id:uid()}))]);
+    alert(`Added ${missing.length} compounds.`);
+  }
+
+  /* ---------- DERIVED ---------- */
+  const last7=store.logs.filter(l=>daysSince(l.datetime)<7);
+  const lastFor=id=>store.logs.find(l=>l.compoundId===id);
+  const recentSites=store.logs.slice(0,10).map(l=>l.site).filter(Boolean);
+  const nextSite=INJECTION_SITES.find(s=>!recentSites.slice(0,4).includes(s))||INJECTION_SITES[0];
+  const sortedCycles=useMemo(()=>[...store.cycles].sort((a,b)=>(b.startDate||"").localeCompare(a.startDate||"")),[store.cycles]);
+  const activeCycle=useMemo(()=>{const t=today();return sortedCycles.find(c=>c.startDate<=t&&(!c.endDate||c.endDate>=t));},[sortedCycles]);
+  const phaseBands=useMemo(()=>sortedCycles.map(c=>({start:c.startDate,end:c.endDate||today(),color:phaseColor(c.phase),label:c.name})),[sortedCycles]);
+
+  /* ---------- RENDER ---------- */
+  const SyncBar=()=>(
+    <div style={S.syncBar(syncStatus)}>
+      {syncStatus==="syncing"&&<span className="spin">⟳</span>}
+      {syncStatus==="ok"&&<span>✓</span>}
+      {syncStatus==="error"&&<span>✕</span>}
+      {syncStatus==="idle"&&<span>○</span>}
+      <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis"}}>{syncMsg||(isGhConfigured()?"GitHub connected":"Local only — tap Connect to sync")}</span>
+      <button onClick={manualSync} style={{...S.btn(),padding:"4px 10px",fontSize:9}}>{isGhConfigured()?"↺":"Connect"}</button>
+      <button onClick={()=>setModal({type:"settings"})} style={{...S.btnCancel,padding:"4px 8px",fontSize:10,marginRight:0}}>⚙</button>
+    </div>
+  );
+
+  return(
+    <div style={S.app}>
+      <div style={S.bgGlow}/>
+      <div style={S.wrap}>
+        <div style={S.header}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8}}>
+            <div>
+              <div style={S.logo}>⬡ Protocol</div>
+              <div style={S.subtitle}>TRT · Cycle · Health Tracker</div>
+            </div>
+            {activeCycle&&<div style={{textAlign:"right"}}>
+              <div style={{fontSize:9,color:"var(--muted)",letterSpacing:"0.15em",textTransform:"uppercase"}}>Active Cycle</div>
+              <div style={{fontSize:14,fontWeight:700,color:phaseColor(activeCycle.phase),marginTop:2}}>{activeCycle.name}</div>
+              <div style={{fontSize:10,color:"var(--muted)"}}>Week {Math.floor(daysSince(activeCycle.startDate)/7)+1}</div>
+            </div>}
+          </div>
+          <nav style={S.nav}>
+            {[["dashboard","Dash"],["log","Log"],["cycles","Cycles"],["health","Health"],["charts","Charts"],["protocols","Protocols"]].map(([k,l])=>(
+              <button key={k} style={S.navBtn(tab===k)} onClick={()=>setTab(k)}>{l}</button>
+            ))}
+          </nav>
+        </div>
+
+        <SyncBar/>
+
+        {tab==="dashboard"&&<DashboardTab store={store} last7={last7} nextSite={nextSite} lastFor={lastFor} activeCycle={activeCycle} openLog={(c)=>setModal({type:"log",compound:c})}/>}
+        {tab==="log"&&<LogTab store={store} setStore={setStore} setStorePart={setStorePart}/>}
+        {tab==="cycles"&&<CyclesTab cycles={sortedCycles} store={store} setModal={setModal} setStorePart={setStorePart}/>}
+        {tab==="health"&&<HealthTab store={store} setStore={setStore} setStorePart={setStorePart} subtab={healthSubtab} setSubtab={setHealthSubtab} setModal={setModal} stravaConfig={stravaConfig} syncStrava={syncStrava} syncStravaFull={syncStravaFull} importMfpCsv={importMfpCsv}/>}
+        {tab==="charts"&&<ChartsTab store={store} subtab={chartsSubtab} setSubtab={setChartsSubtab} phaseBands={phaseBands}/>}
+        {tab==="protocols"&&<ProtocolsTab store={store} setStorePart={setStorePart} setModal={setModal} addMissingSeeded={addMissingSeededCompounds}/>}
+      </div>
+
+      <button className="fab" style={S.fab} onClick={()=>setModal({type:"log"})} title="Log injection">+</button>
+
+      {modal&&<Modals modal={modal} setModal={setModal} store={store} ghConfig={ghConfig} saveGhConfig={saveGhConfig} clearGhConfig={clearGhConfig} stravaConfig={stravaConfig} setStravaConfig={setStravaConfig} addLog={addLog} addCompound={addCompound} addCycle={addCycle} updateCycle={updateCycle} addBody={addBody} addBloods={addBloods} addMacros={addMacros} importHistorical={importHistorical} syncStrava={syncStrava}/>}
+    </div>
+  );
+}
+
+/* ---------- TABS ---------- */
+function DashboardTab({store,last7,nextSite,lastFor,activeCycle,openLog}){
+  const lastWeight=store.bodyMetrics[0];
+  const lastBP=store.bloods.find(b=>b.bp_sys);
+  return(<>
+    <div style={S.statGrid}>
+      <div style={S.statCard("0,212,255")}><div style={S.statNum("0,212,255")}>{store.logs.length}</div><div style={S.statLabel}>Doses Logged</div></div>
+      <div style={S.statCard("127,255,107")}><div style={S.statNum("127,255,107")}>{last7.length}</div><div style={S.statLabel}>Last 7 Days</div></div>
+      <div style={S.statCard("199,125,255")}><div style={S.statNum("199,125,255")}>{store.cycles.length}</div><div style={S.statLabel}>Cycles</div></div>
+      {lastWeight&&<div style={S.statCard("255,209,102")}><div style={S.statNum("255,209,102")}>{lastWeight.weight?lastWeight.weight.toFixed(1):"-"}<span style={{fontSize:14,fontWeight:400,opacity:0.6}}>kg</span></div><div style={S.statLabel}>Latest Weight</div></div>}
+    </div>
+    <div style={{...S.card,borderColor:"rgba(0,212,255,0.2)",marginBottom:18}}>
+      <div style={{fontSize:9,color:"rgba(0,212,255,0.6)",letterSpacing:"0.2em",textTransform:"uppercase",marginBottom:6}}>Suggested Next Site</div>
+      <div style={{fontSize:20,fontWeight:700}}>{nextSite}</div>
+      <div style={{fontSize:11,color:"var(--muted)",marginTop:3}}>Based on recent rotation</div>
+    </div>
+    {lastBP&&<div style={S.card}>
+      <div style={S.sectionH}>Latest BP · {fmt(lastBP.date)}</div>
+      <div style={{fontSize:24,fontWeight:700,color:lastBP.bp_sys>=BP_HIGH.sys||lastBP.bp_dia>=BP_HIGH.dia?"#ff6b35":lastBP.bp_sys<=BP_TARGET.sys&&lastBP.bp_dia<=BP_TARGET.dia?"#7fff6b":"var(--accent5)"}}>
+        {lastBP.bp_sys}/{lastBP.bp_dia} <span style={{fontSize:11,color:"var(--muted)",fontWeight:400}}>mmHg</span>
+      </div>
+    </div>}
+    <div style={S.sectionH}>Protocols</div>
+    {store.compounds.length===0&&<Empty msg="No compounds yet — add some in Protocols tab"/>}
+    {store.compounds.map(c=>{const last=lastFor(c.id);return(
+      <div key={c.id} className="fade-up" style={{...S.card,borderColor:`${c.color}22`,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+        <div style={S.dot(c.color)}/>
+        <div style={{flex:1,minWidth:140}}>
+          <div style={{fontWeight:700,fontSize:14}}>{c.name}</div>
+          <div style={{fontSize:11,color:"var(--muted)",marginTop:2}}>{c.defaultDose} {c.unit} · {(FREQ_OPTIONS.find(f=>f.value===c.frequency)||{}).label}</div>
+          {last&&<div style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginTop:2}}>Last: {last.dose}{last.unit} — {daysSince(last.datetime)===0?"today":`${daysSince(last.datetime)}d ago`}{last.site&&` · ${last.site}`}</div>}
+        </div>
+        <div style={S.tag(c.color)}>{(TYPE_OPTIONS.find(t=>t.value===c.type)||{}).label}</div>
+        <button style={{...S.btn(),padding:"7px 14px",fontSize:10}} onClick={()=>openLog(c)}>Log</button>
+      </div>
+    );})}
+  </>);
+}
+
+function LogTab({store,setStorePart}){
+  const[sortAsc,setSortAsc]=useState(false);
+  const[filterCompound,setFilterCompound]=useState("all");
+  const PAGE=100;
+  const[page,setPage]=useState(1);
+
+  const compounds=[...new Set(store.logs.map(l=>l.compoundName))].sort();
+
+  const filtered=useMemo(()=>{
+    let ls=[...store.logs];
+    if(filterCompound!=="all")ls=ls.filter(l=>l.compoundName===filterCompound);
+    ls.sort((a,b)=>{
+      const cmp=a.datetime.localeCompare(b.datetime);
+      return sortAsc?cmp:-cmp;
+    });
+    return ls;
+  },[store.logs,filterCompound,sortAsc]);
+
+  const visible=filtered.slice(0,page*PAGE);
+  const hasMore=filtered.length>visible.length;
+
+  // reset page when filter/sort changes
+  React.useEffect(()=>setPage(1),[filterCompound,sortAsc]);
+
+  return(<>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginBottom:12}}>
+      <div style={S.sectionH}>Injection History ({filtered.length}{filterCompound!=="all"?"/"+store.logs.length:""})</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+        <select style={{...S.select,marginBottom:0,padding:"6px 10px",fontSize:11,width:"auto"}}
+          value={filterCompound} onChange={e=>setFilterCompound(e.target.value)}>
+          <option value="all">All compounds</option>
+          {compounds.map(c=><option key={c} value={c}>{c}</option>)}
+        </select>
+        <button style={{...S.subnavBtn(true),borderColor:"rgba(0,212,255,0.3)",color:"var(--accent)",background:"rgba(0,212,255,0.08)"}}
+          onClick={()=>setSortAsc(a=>!a)}
+          title="Toggle sort direction">
+          {sortAsc?"↑ Oldest first":"↓ Newest first"}
+        </button>
+      </div>
+    </div>
+    {filtered.length===0&&<Empty msg={filterCompound!=="all"?"No entries for this compound":"No doses yet — tap + to log one"}/>}
+    {visible.map(l=>(
+      <div key={l.id} style={{display:"flex",alignItems:"flex-start",gap:12,padding:"12px 0",borderBottom:"1px solid var(--border)"}}>
+        <div style={{...S.dot(l.color),marginTop:4}}/>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:700,fontSize:13}}>{l.compoundName}</div>
+          <div style={{fontSize:12,color:"var(--accent)",marginTop:1}}>{l.dose} {l.unit}</div>
+          {l.site&&<div style={{fontSize:11,color:"var(--muted)",marginTop:1}}>{l.site}</div>}
+          {l.notes&&<div style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginTop:1,fontStyle:"italic"}}>{l.notes}</div>}
+        </div>
+        <div style={{textAlign:"right",flexShrink:0}}>
+          <div style={{fontSize:11,color:"var(--muted)"}}>{fmtShort(l.datetime)}</div>
+          <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginTop:1}}>{fmtT(l.datetime)}</div>
+          <button style={{...S.btnDanger,marginTop:4}} onClick={()=>setStorePart("logs",ls=>ls.filter(x=>x.id!==l.id))}>remove</button>
+        </div>
+      </div>
+    ))}
+    {hasMore&&(
+      <button onClick={()=>setPage(p=>p+1)}
+        style={{...S.btnCancel,width:"100%",textAlign:"center",marginTop:12,padding:"12px"}}>
+        Load more ({filtered.length-visible.length} remaining)
+      </button>
+    )}
+  </>);
+}
+
+function CyclesTab({cycles,store,setModal,setStorePart}){
+  return(<>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+      <div style={S.sectionH}>Cycles ({cycles.length})</div>
+      <button style={S.btn()} onClick={()=>setModal({type:"cycle"})}>+ Cycle</button>
+    </div>
+    {cycles.length===0&&<Empty msg="No cycles yet — add a Cut, Grow, or Maintenance phase"/>}
+    {cycles.map(c=>{
+      const start=new Date(c.startDate),end=c.endDate?new Date(c.endDate):new Date();
+      const weeks=Math.max(1,Math.round((end-start)/(86400000*7)));
+      // stats per cycle
+      const inLogs=store.logs.filter(l=>l.datetime>=c.startDate&&(!c.endDate||l.datetime<=c.endDate+"T23:59:59"));
+      const totals={};inLogs.forEach(l=>{totals[l.compoundName]=(totals[l.compoundName]||0)+l.dose;});
+      const bodyIn=store.bodyMetrics.filter(b=>b.date>=c.startDate&&(!c.endDate||b.date<=c.endDate));
+      const wStart=bodyIn[bodyIn.length-1]?.weight,wEnd=bodyIn[0]?.weight;
+      const bfStart=bodyIn[bodyIn.length-1]?.bf,bfEnd=bodyIn[0]?.bf;
+      const col=phaseColor(c.phase);
+      return(
+        <div key={c.id} style={{...S.card,borderColor:`${col}33`}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap",marginBottom:10}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={S.dot(col)}/>
+              <div>
+                <div style={{fontSize:15,fontWeight:700}}>{c.name}</div>
+                <div style={{fontSize:11,color:"var(--muted)",marginTop:2}}>{fmt(c.startDate)} → {c.endDate?fmt(c.endDate):"ongoing"} · {weeks} weeks</div>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:6,alignItems:"center"}}>
+              <div style={S.tag(col)}>{(PHASE_OPTIONS.find(p=>p.value===c.phase)||{}).label||c.phase}</div>
+              <button style={{...S.btnCancel,padding:"5px 10px",fontSize:10,marginRight:0}} onClick={()=>setModal({type:"cycle",cycle:c})}>edit</button>
+              <button style={{...S.btnDanger,padding:"4px 6px"}} onClick={()=>{if(confirm("Delete this cycle?"))setStorePart("cycles",cs=>cs.filter(x=>x.id!==c.id));}}>✕</button>
+            </div>
+          </div>
+          {(wStart||bfStart)&&<div style={{display:"flex",gap:18,fontSize:12,marginBottom:8,flexWrap:"wrap"}}>
+            {wStart&&wEnd&&<span><span style={{color:"var(--muted)"}}>Weight:</span> <strong>{wStart.toFixed(1)}→{wEnd.toFixed(1)}kg</strong> <span style={{color:wEnd-wStart>0?"#7fff6b":"#ff6b35"}}>({(wEnd-wStart>0?"+":"")+(wEnd-wStart).toFixed(1)})</span></span>}
+            {bfStart&&bfEnd&&<span><span style={{color:"var(--muted)"}}>BF:</span> <strong>{(bfStart*100).toFixed(1)}→{(bfEnd*100).toFixed(1)}%</strong> <span style={{color:bfEnd-bfStart<0?"#7fff6b":"#ff6b35"}}>({(bfEnd-bfStart>0?"+":"")+((bfEnd-bfStart)*100).toFixed(1)})</span></span>}
+          </div>}
+          {Object.keys(totals).length>0&&<details style={{fontSize:11,color:"var(--muted)"}}>
+            <summary style={{cursor:"pointer"}}>Compound totals ({Object.keys(totals).length})</summary>
+            <div style={{marginTop:8,display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:6}}>
+              {Object.entries(totals).sort((a,b)=>b[1]-a[1]).map(([n,t])=><div key={n} style={{display:"flex",justifyContent:"space-between",fontFamily:"DM Mono"}}><span>{n}:</span><strong style={{color:"var(--text)"}}>{Math.round(t)}{t>10?"":"."}{store.compounds.find(x=>x.name===n)?.unit||"mg"}</strong></div>)}
+            </div>
+          </details>}
+          {c.notes&&<div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginTop:8,fontStyle:"italic"}}>{c.notes}</div>}
+        </div>
+      );
+    })}
+  </>);
+}
+
+function HealthTab({store,setStorePart,subtab,setSubtab,setModal,stravaConfig,syncStrava,syncStravaFull,importMfpCsv}){
+  return(<>
+    <div style={S.subnav}>
+      {[["body","Weight & BF"],["bloods","Bloods"],["bp","Blood Pressure"],["macros","Macros"],["training","Training"]].map(([k,l])=><button key={k} style={S.subnavBtn(subtab===k)} onClick={()=>setSubtab(k)}>{l}</button>)}
+    </div>
+    {subtab==="body"&&<BodySection store={store} setStorePart={setStorePart} setModal={setModal}/>}
+    {subtab==="bloods"&&<BloodsSection store={store} setStorePart={setStorePart} setModal={setModal}/>}
+    {subtab==="bp"&&<BPSection store={store} setStorePart={setStorePart} setModal={setModal}/>}
+    {subtab==="macros"&&<MacrosSection store={store} setStorePart={setStorePart} setModal={setModal} importMfpCsv={importMfpCsv}/>}
+    {subtab==="training"&&<TrainingSection store={store} stravaConfig={stravaConfig} syncStrava={syncStrava} syncStravaFull={syncStravaFull} setModal={setModal}/>}
+  </>);
+}
+
+function BodySection({store,setStorePart,setModal}){
+  const data=[...store.bodyMetrics].sort((a,b)=>a.date.localeCompare(b.date));
+  return(<>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+      <div style={S.sectionH}>Weight & Body Fat</div>
+      <button style={S.btn()} onClick={()=>setModal({type:"body"})}>+ Entry</button>
+    </div>
+    {data.length===0&&<Empty msg="Log your first weigh-in"/>}
+    {data.length>0&&<div style={{...S.card}}>
+      <LineChart data={data.map(d=>({...d,x:d.date,bfPct:d.bf?d.bf*100:null}))} series={[{key:"weight",color:"#00d4ff",label:"Weight (kg)"},{key:"bfPct",color:"#ffd166",label:"BF %"}]} formatX={d=>d.toLocaleDateString("en-GB",{month:"short",year:"2-digit"})}/>
+    </div>}
+    {data.slice().reverse().slice(0,30).map(b=>(
+      <div key={b.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid var(--border)"}}>
+        <div>
+          <div style={{fontSize:12,color:"var(--text)"}}>{fmt(b.date)}</div>
+          {b.notes&&<div style={{fontSize:10,color:"var(--muted)",marginTop:1,fontStyle:"italic"}}>{b.notes}</div>}
+        </div>
+        <div style={{display:"flex",gap:14,alignItems:"center"}}>
+          {b.weight&&<span style={{fontSize:14,fontWeight:700}}>{b.weight.toFixed(1)}<span style={{fontSize:10,opacity:0.5}}>kg</span></span>}
+          {b.bf&&<span style={{fontSize:13,fontWeight:700,color:"var(--accent5)"}}>{(b.bf*100).toFixed(1)}<span style={{fontSize:10,opacity:0.5}}>%</span></span>}
+          <button style={S.btnDanger} onClick={()=>setStorePart("bodyMetrics",bs=>bs.filter(x=>x.id!==b.id))}>✕</button>
+        </div>
+      </div>
+    ))}
+  </>);
+}
+
+function BloodsSection({store,setStorePart,setModal}){
+  const sorted=[...store.bloods].sort((a,b)=>a.date.localeCompare(b.date));
+  return(<>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+      <div style={S.sectionH}>Blood Panels ({store.bloods.length})</div>
+      <button style={S.btn()} onClick={()=>setModal({type:"bloods"})}>+ Panel</button>
+    </div>
+    {store.bloods.length===0&&<Empty msg="Log your first blood panel"/>}
+    {BLOOD_KEYS.map(k=>{
+      const r=NHS_RANGES[k];
+      const data=sorted.filter(e=>e[k]!=null).map(e=>({x:e.date,[k]:e[k]}));
+      if(!data.length)return null;
+      const latest=data[data.length-1][k];
+      const inRange=(r.min==null||latest>=r.min)&&(r.max==null||latest<=r.max);
+      return <div key={k} style={S.card}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
+          <div>
+            <div style={{fontSize:13,fontWeight:700}}>{r.label}</div>
+            <div style={{fontSize:10,color:"var(--muted)",marginTop:1}}>NHS range: {r.min??"—"} – {r.max??"—"} {r.unit}</div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:18,fontWeight:700,color:inRange?"#7fff6b":"#ff6b35"}}>{latest} <span style={{fontSize:10,opacity:0.6}}>{r.unit}</span></div>
+            <div style={{fontSize:9,color:"var(--muted)",marginTop:1}}>{inRange?"✓ in range":"⚠ out of range"}</div>
+          </div>
+        </div>
+        <LineChart data={data} series={[{key:k,color:inRange?"#7fff6b":"#ff6b35",label:r.label}]} refRange={{min:r.min,max:r.max}} height={150} formatY={v=>v.toFixed(v<10?2:1)} formatX={d=>d.toLocaleDateString("en-GB",{month:"short",year:"2-digit"})} unit={" "+r.unit} showLegend={false}/>
+      </div>;
+    })}
+    <div style={{...S.card,marginTop:12}}>
+      <div style={S.sectionH}>Recent Panels</div>
+      {store.bloods.slice(0,10).map(b=>(
+        <div key={b.id} style={{padding:"10px 0",borderBottom:"1px solid var(--border)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{fontSize:12,fontWeight:700}}>{fmt(b.date)}</div>
+            <button style={S.btnDanger} onClick={()=>setStorePart("bloods",bs=>bs.filter(x=>x.id!==b.id))}>remove</button>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:4,marginTop:4,fontSize:11}}>
+            {b.bp_sys&&<span><span style={{color:"var(--muted)"}}>BP:</span> {b.bp_sys}/{b.bp_dia}</span>}
+            {BLOOD_KEYS.map(k=>b[k]!=null?<span key={k}><span style={{color:"var(--muted)"}}>{k.toUpperCase()}:</span> {b[k]}</span>:null)}
+          </div>
+        </div>
+      ))}
+    </div>
+  </>);
+}
+
+function BPSection({store,setStorePart,setModal}){
+  const data=store.bloods.filter(b=>b.bp_sys).map(b=>({x:b.date,sys:b.bp_sys,dia:b.bp_dia})).sort((a,b)=>a.x.localeCompare(b.x));
+  return(<>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+      <div style={S.sectionH}>Blood Pressure ({data.length})</div>
+      <button style={S.btn()} onClick={()=>setModal({type:"bloods",bpOnly:true})}>+ Reading</button>
+    </div>
+    {data.length===0&&<Empty msg="No BP readings yet"/>}
+    {data.length>0&&<div style={S.card}>
+      <LineChart data={data} series={[{key:"sys",color:"#ff6b35",label:"Systolic"},{key:"dia",color:"#00d4ff",label:"Diastolic"}]} refRange={{min:60,max:BP_TARGET.sys}} formatY={v=>Math.round(v)} formatX={d=>d.toLocaleDateString("en-GB",{month:"short",year:"2-digit"})} unit=" mmHg"/>
+      <div style={{display:"flex",gap:14,fontSize:10,color:"var(--muted)",marginTop:8,flexWrap:"wrap"}}>
+        <span>Target: ≤{BP_TARGET.sys}/{BP_TARGET.dia}</span>
+        <span style={{color:"#ff6b35"}}>Hypertension threshold: {BP_HIGH.sys}/{BP_HIGH.dia}</span>
+      </div>
+    </div>}
+    {data.slice().reverse().slice(0,20).map((d,i)=>{
+      const high=d.sys>=BP_HIGH.sys||d.dia>=BP_HIGH.dia;
+      const ok=d.sys<=BP_TARGET.sys&&d.dia<=BP_TARGET.dia;
+      return <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:"1px solid var(--border)"}}>
+        <div style={{fontSize:12}}>{fmt(d.x)}</div>
+        <div style={{fontSize:14,fontWeight:700,color:high?"#ff6b35":ok?"#7fff6b":"var(--accent5)"}}>{d.sys}/{d.dia}</div>
+      </div>;
+    })}
+  </>);
+}
+
+function MacrosSection({store,setStorePart,setModal,importMfpCsv}){
+  const data=[...store.macros].sort((a,b)=>a.date.localeCompare(b.date));
+  // align with weight
+  const byDate={};store.bodyMetrics.forEach(b=>{byDate[b.date]=b.weight;});
+  const aligned=data.map(m=>({...m,x:m.date,weight:byDate[m.date]||null}));
+  return(<>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:6}}>
+      <div style={S.sectionH}>Macros & Calories ({store.macros.length})</div>
+      <div style={{display:"flex",gap:6}}>
+        <label style={{...S.btn(),cursor:"pointer",padding:"8px 14px",fontSize:10}}>
+          Import MFP CSV
+          <input type="file" accept=".csv,text/csv" style={{display:"none"}} onChange={e=>{if(e.target.files[0])importMfpCsv(e.target.files[0]);e.target.value="";}}/>
+        </label>
+        <button style={S.btn()} onClick={()=>setModal({type:"macros"})}>+ Day</button>
+      </div>
+    </div>
+    {data.length===0&&<div style={{...S.card,fontSize:12,color:"var(--muted)",lineHeight:1.7}}>
+      <div style={{color:"var(--accent)",marginBottom:8,fontSize:11,letterSpacing:"0.12em",textTransform:"uppercase"}}>How to import from MFP</div>
+      MyFitnessPal Premium → <strong>Settings → Export Data</strong> → email yourself the CSV → download it → tap <em>Import MFP CSV</em>. The CSV should contain at least Date and Calories columns; Protein/Carbs/Fat are optional.<br/><br/>Or tap <em>+ Day</em> to enter manually.
+    </div>}
+    {data.length>0&&<div style={S.card}>
+      <LineChart data={aligned} series={[{key:"kcal",color:"#ffd166",label:"Calories"},{key:"weight",color:"#00d4ff",label:"Weight (kg)"}]} formatY={v=>Math.round(v)} formatX={d=>d.toLocaleDateString("en-GB",{month:"short",year:"2-digit"})}/>
+    </div>}
+    {data.slice().reverse().slice(0,30).map(m=>(
+      <div key={m.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid var(--border)",gap:12,flexWrap:"wrap"}}>
+        <div style={{minWidth:0}}>
+          <div style={{fontSize:12,fontWeight:700}}>{fmt(m.date)}</div>
+          <div style={{fontSize:10,color:"var(--muted)"}}>{m.source==="mfp"?"MFP":"Manual"}</div>
+        </div>
+        <div style={{display:"flex",gap:10,fontSize:11,flex:1,justifyContent:"flex-end",flexWrap:"wrap"}}>
+          <span><span style={{color:"var(--muted)"}}>kcal</span> <strong>{m.kcal}</strong></span>
+          <span style={{color:"#7fff6b"}}>P {m.protein}g</span>
+          <span style={{color:"#ffd166"}}>C {m.carbs}g</span>
+          <span style={{color:"#ff6b9d"}}>F {m.fat}g</span>
+          <button style={S.btnDanger} onClick={()=>setStorePart("macros",ms=>ms.filter(x=>x.id!==m.id))}>✕</button>
+        </div>
+      </div>
+    ))}
+  </>);
+}
+
+function TrainingSection({store,stravaConfig,syncStrava,syncStravaFull,setModal}){
+  const data=[...store.activities].sort((a,b)=>a.date.localeCompare(b.date));
+  // weekly bins
+  const weekly={};data.forEach(a=>{const wk=weekKey(a.date);if(!weekly[wk])weekly[wk]={x:wk,minutes:0,sessions:0,km:0};weekly[wk].minutes+=a.durationMin;weekly[wk].km+=a.distanceKm;weekly[wk].sessions++;});
+  const wd=Object.values(weekly).sort((a,b)=>a.x.localeCompare(b.x));
+  return(<>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:6}}>
+      <div style={S.sectionH}>Training ({store.activities.length} activities)</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {stravaConfig.workerUrl&&stravaConfig.refreshToken&&(
+          <button style={S.btn()} onClick={syncStrava}>↺ New</button>
+        )}
+        {stravaConfig.workerUrl&&stravaConfig.refreshToken&&(
+          <button style={{...S.btn(),background:"rgba(127,255,107,0.1)",color:"#7fff6b",borderColor:"rgba(127,255,107,0.3)"}}
+            onClick={()=>{if(confirm("Replace all stored activities with a full re-fetch from Strava? This may take a minute."))syncStravaFull();}}>
+            ⟳ Full Resync
+          </button>
+        )}
+        {(!stravaConfig.workerUrl||!stravaConfig.refreshToken)&&(
+          <button style={S.btn()} onClick={()=>setModal({type:"settings"})}>Connect Strava</button>
+        )}
+      </div>
+    </div>
+    {!stravaConfig.refreshToken&&<div style={{...S.card,fontSize:12,color:"var(--muted)",lineHeight:1.7}}>
+      <div style={{color:"var(--accent)",marginBottom:8,fontSize:11,letterSpacing:"0.12em",textTransform:"uppercase"}}>Connect Strava</div>
+      Open <strong>Settings ⚙</strong> → enter your <strong>Cloudflare Worker URL</strong> → tap <strong>Authorise Strava</strong>. Setup instructions are in the README.<br/><br/>Tip: enable Garmin Connect → Strava auto-sync inside Garmin's app to pipe Garmin data through Strava automatically.
+    </div>}
+    {wd.length>0&&<div style={S.card}>
+      <div style={S.sectionH}>Weekly Training Minutes</div>
+      <LineChart data={wd} series={[{key:"minutes",color:"#7fff6b",label:"Minutes"}]} formatY={v=>Math.round(v)} formatX={d=>d.toLocaleDateString("en-GB",{day:"2-digit",month:"short"})} unit=" min"/>
+    </div>}
+    {data.slice().reverse().slice(0,30).map(a=>(
+      <div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 0",borderBottom:"1px solid var(--border)",gap:10}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:12,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.name||a.type}</div>
+          <div style={{fontSize:10,color:"var(--muted)",marginTop:1}}>{a.type} · {fmt(a.date)}</div>
+        </div>
+        <div style={{textAlign:"right",fontSize:11}}>
+          <div><strong>{a.durationMin}m</strong>{a.distanceKm>0&&` · ${a.distanceKm}km`}</div>
+          {a.kj&&<div style={{fontSize:9,color:"var(--muted)"}}>{a.kj} kJ</div>}
+        </div>
+      </div>
+    ))}
+  </>);
+}
+
+function ChartsTab({store,subtab,setSubtab,phaseBands}){
+  const tabs=[["doses","Dosage"],["body","Body"],["macros","Macros"],["bp","BP"],["training","Training"],["bloods","Bloods"]];
+  return(<>
+    <div style={S.subnav}>
+      {tabs.map(([k,l])=><button key={k} style={S.subnavBtn(subtab===k)} onClick={()=>setSubtab(k)}>{l}</button>)}
+    </div>
+    {subtab==="doses"&&<DosesChart store={store} phaseBands={phaseBands}/>}
+    {subtab==="body"&&<BodyChart store={store} phaseBands={phaseBands}/>}
+    {subtab==="macros"&&<MacrosChart store={store} phaseBands={phaseBands}/>}
+    {subtab==="bp"&&<BPChart store={store} phaseBands={phaseBands}/>}
+    {subtab==="training"&&<TrainingChart store={store} phaseBands={phaseBands}/>}
+    {subtab==="bloods"&&<BloodsChartView store={store}/>}
+  </>);
+}
+
+function DosesChart({store,phaseBands}){
+  const[mode,setMode]=useState("lines");
+  // weekly mg per compound (mg-unit only by default)
+  const data=useMemo(()=>{
+    const weeks={};
+    store.logs.forEach(l=>{
+      const wk=weekKey(l.datetime);
+      if(!weeks[wk])weeks[wk]={x:wk};
+      weeks[wk][l.compoundName]=(weeks[wk][l.compoundName]||0)+l.dose;
+    });
+    return Object.values(weeks).sort((a,b)=>a.x.localeCompare(b.x));
+  },[store.logs]);
+  const compounds=useMemo(()=>{
+    const names=new Set(store.logs.map(l=>l.compoundName));
+    return Array.from(names).map((n,i)=>{const c=store.compounds.find(x=>x.name===n);return{key:n,label:n,color:c?c.color:SWATCHES[i%SWATCHES.length],unit:c?c.unit:"mg"};});
+  },[store.logs,store.compounds]);
+  // group by unit
+  const byUnit={};compounds.forEach(c=>{(byUnit[c.unit]||(byUnit[c.unit]=[])).push(c);});
+
+  if(!data.length)return <Empty msg="No dose history yet"/>;
+  return(<>
+    <div style={{display:"flex",gap:6,marginBottom:14,justifyContent:"flex-end"}}>
+      <button style={S.subnavBtn(mode==="lines")} onClick={()=>setMode("lines")}>Lines</button>
+      <button style={S.subnavBtn(mode==="stack")} onClick={()=>setMode("stack")}>Stacked</button>
+    </div>
+    {Object.entries(byUnit).map(([unit,cs])=>(
+      <div key={unit} style={S.card}>
+        <div style={S.sectionH}>Weekly Total · {unit}</div>
+        {mode==="lines"
+          ?<LineChart data={data} series={cs} formatY={v=>v<10?v.toFixed(1):Math.round(v)} formatX={d=>d.toLocaleDateString("en-GB",{month:"short",year:"2-digit"})} phaseBands={phaseBands} unit={" "+unit}/>
+          :<StackedAreaChart data={data} series={cs} formatY={v=>Math.round(v)} formatX={d=>d.toLocaleDateString("en-GB",{month:"short",year:"2-digit"})} phaseBands={phaseBands} unit={" "+unit}/>
+        }
+      </div>
+    ))}
+    {phaseBands.length>0&&<div style={{display:"flex",gap:14,fontSize:10,color:"var(--muted)",flexWrap:"wrap",justifyContent:"center",marginTop:6}}>
+      {phaseBands.map((b,i)=><span key={i} style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:18,height:8,background:b.color,opacity:0.5,borderRadius:2}}/>{b.label}</span>)}
+    </div>}
+  </>);
+}
+
+function BodyChart({store,phaseBands}){
+  const data=[...store.bodyMetrics].sort((a,b)=>a.date.localeCompare(b.date)).map(b=>({x:b.date,weight:b.weight,bfPct:b.bf?b.bf*100:null}));
+  if(!data.length)return <Empty msg="No body data yet"/>;
+  return <div style={S.card}>
+    <div style={S.sectionH}>Weight & Body Fat with Cycle Overlay</div>
+    <LineChart data={data} series={[{key:"weight",color:"#00d4ff",label:"Weight (kg)"},{key:"bfPct",color:"#ffd166",label:"BF %"}]} formatY={v=>v.toFixed(1)} formatX={d=>d.toLocaleDateString("en-GB",{month:"short",year:"2-digit"})} phaseBands={phaseBands}/>
+  </div>;
+}
+
+function MacrosChart({store,phaseBands}){
+  const byDate={};store.bodyMetrics.forEach(b=>{byDate[b.date]=b.weight;});
+  const data=[...store.macros].sort((a,b)=>a.date.localeCompare(b.date)).map(m=>({x:m.date,kcal:m.kcal,protein:m.protein,weight:byDate[m.date]||null}));
+  if(!data.length)return <Empty msg="No macro data yet — import MFP CSV in Health → Macros"/>;
+  return<>
+    <div style={S.card}>
+      <div style={S.sectionH}>Calories vs Weight</div>
+      <LineChart data={data} series={[{key:"kcal",color:"#ffd166",label:"kcal"},{key:"weight",color:"#00d4ff",label:"Weight (kg)"}]} formatY={v=>Math.round(v)} formatX={d=>d.toLocaleDateString("en-GB",{month:"short",year:"2-digit"})} phaseBands={phaseBands}/>
+    </div>
+    <div style={S.card}>
+      <div style={S.sectionH}>Protein Intake</div>
+      <LineChart data={data} series={[{key:"protein",color:"#7fff6b",label:"Protein (g)"}]} formatY={v=>Math.round(v)} formatX={d=>d.toLocaleDateString("en-GB",{month:"short",year:"2-digit"})} phaseBands={phaseBands} unit=" g"/>
+    </div>
+  </>;
+}
+
+function BPChart({store,phaseBands}){
+  const data=store.bloods.filter(b=>b.bp_sys).map(b=>({x:b.date,sys:b.bp_sys,dia:b.bp_dia})).sort((a,b)=>a.x.localeCompare(b.x));
+  if(!data.length)return <Empty msg="No BP readings yet"/>;
+  return <div style={S.card}>
+    <div style={S.sectionH}>Blood Pressure Trend</div>
+    <LineChart data={data} series={[{key:"sys",color:"#ff6b35",label:"Systolic"},{key:"dia",color:"#00d4ff",label:"Diastolic"}]} refRange={{min:60,max:BP_TARGET.sys}} formatY={v=>Math.round(v)} formatX={d=>d.toLocaleDateString("en-GB",{month:"short",year:"2-digit"})} phaseBands={phaseBands} unit=" mmHg"/>
+  </div>;
+}
+
+function TrainingChart({store,phaseBands}){
+  const weekly={};store.activities.forEach(a=>{const wk=weekKey(a.date);if(!weekly[wk])weekly[wk]={x:wk,minutes:0,km:0};weekly[wk].minutes+=a.durationMin;weekly[wk].km+=a.distanceKm;});
+  const byDate={};store.bodyMetrics.forEach(b=>{byDate[weekKey(b.date)]=b.weight;});
+  const data=Object.values(weekly).sort((a,b)=>a.x.localeCompare(b.x)).map(w=>({...w,weight:byDate[w.x]||null}));
+  if(!data.length)return <Empty msg="No training data yet — connect Strava in Settings"/>;
+  return <>
+    <div style={S.card}>
+      <div style={S.sectionH}>Weekly Training Minutes vs Weight</div>
+      <LineChart data={data} series={[{key:"minutes",color:"#7fff6b",label:"Training (min)"},{key:"weight",color:"#00d4ff",label:"Weight (kg)"}]} formatY={v=>Math.round(v)} formatX={d=>d.toLocaleDateString("en-GB",{month:"short",year:"2-digit"})} phaseBands={phaseBands}/>
+    </div>
+  </>;
+}
+
+function BloodsChartView({store}){
+  const sorted=[...store.bloods].sort((a,b)=>a.date.localeCompare(b.date));
+  if(!sorted.length)return <Empty msg="No blood panels yet"/>;
+  return BLOOD_KEYS.map(k=>{
+    const r=NHS_RANGES[k];
+    const data=sorted.filter(e=>e[k]!=null).map(e=>({x:e.date,[k]:e[k]}));
+    if(!data.length)return null;
+    return <div key={k} style={S.card}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:6}}>
+        <div style={{fontSize:12,fontWeight:700}}>{r.label}</div>
+        <div style={{fontSize:10,color:"var(--muted)"}}>NHS: {r.min??"—"}–{r.max??"—"} {r.unit}</div>
+      </div>
+      <LineChart data={data} series={[{key:k,color:"#7fff6b",label:r.label}]} refRange={{min:r.min,max:r.max}} height={140} formatY={v=>v.toFixed(v<10?2:1)} formatX={d=>d.toLocaleDateString("en-GB",{month:"short",year:"2-digit"})} unit={" "+r.unit} showLegend={false}/>
+    </div>;
+  });
+}
+
+function ProtocolsTab({store,setStorePart,setModal,addMissingSeeded}){
+  return(<>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:6}}>
+      <div style={S.sectionH}>Compounds ({store.compounds.length})</div>
+      <div style={{display:"flex",gap:6}}>
+        <button style={{...S.btnCancel,marginRight:0}} onClick={addMissingSeeded}>Add Standard List</button>
+        <button style={S.btn()} onClick={()=>setModal({type:"compound"})}>+ Compound</button>
+      </div>
+    </div>
+    {store.compounds.map(c=>(
+      <div key={c.id} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 0",borderBottom:"1px solid var(--border)",flexWrap:"wrap"}}>
+        <div style={S.dot(c.color)}/>
+        <div style={{flex:1,minWidth:140}}>
+          <div style={{fontWeight:700,fontSize:14}}>{c.name}</div>
+          <div style={{fontSize:11,color:"var(--muted)",marginTop:2}}>{c.defaultDose} {c.unit} · {(FREQ_OPTIONS.find(f=>f.value===c.frequency)||{}).label}</div>
+        </div>
+        <div style={S.tag(c.color)}>{(TYPE_OPTIONS.find(t=>t.value===c.type)||{}).label}</div>
+        <button style={{...S.btnDanger,padding:"4px 8px"}} onClick={()=>{if(confirm(`Delete ${c.name} and all its logs?`)){setStorePart("compounds",cs=>cs.filter(x=>x.id!==c.id));setStorePart("logs",ls=>ls.filter(l=>l.compoundId!==c.id));}}}>✕</button>
+      </div>
+    ))}
+    <div style={{...S.card,marginTop:24,background:"transparent",borderColor:"rgba(199,125,255,0.2)"}}>
+      <div style={S.sectionH}>One-time Historical Import</div>
+      <div style={{fontSize:11,color:"var(--muted)",lineHeight:1.6,marginBottom:10}}>
+        Imports your <code>Cycle 2025 2026.xlsx</code> data: 3 cycles, ~1,090 dose entries, 23 body weigh-ins and 20 blood panels. Requires <code>seed-data.json</code> in the same folder. Safe to run multiple times — duplicates are skipped.
+      </div>
+      <button style={S.btn()} onClick={()=>setModal({type:"import"})}>Import Historical Data</button>
+    </div>
+  </>);
+}
+
+/* ---------- MODALS ---------- */
+function Modals({modal,setModal,store,ghConfig,saveGhConfig,clearGhConfig,stravaConfig,setStravaConfig,addLog,addCompound,addCycle,updateCycle,addBody,addBloods,addMacros,importHistorical,syncStrava}){
+  const close=()=>setModal(null);
+  const wrap=children=><div style={S.modal} onClick={e=>e.target===e.currentTarget&&close()}><div style={S.modalBox}>{children}</div></div>;
+
+  if(modal.type==="log")return wrap(<LogModal store={store} compound={modal.compound} onClose={close} onSave={addLog}/>);
+  if(modal.type==="compound")return wrap(<CompoundModal onClose={close} onSave={addCompound}/>);
+  if(modal.type==="cycle")return wrap(<CycleModal cycle={modal.cycle} onClose={close} onSave={(f)=>modal.cycle?updateCycle(modal.cycle.id,f):addCycle(f)}/>);
+  if(modal.type==="body")return wrap(<BodyModal onClose={close} onSave={addBody}/>);
+  if(modal.type==="bloods")return wrap(<BloodsModal bpOnly={modal.bpOnly} onClose={close} onSave={addBloods}/>);
+  if(modal.type==="macros")return wrap(<MacrosModal onClose={close} onSave={addMacros}/>);
+  if(modal.type==="import")return wrap(<ImportModal onClose={close} onConfirm={importHistorical}/>);
+  if(modal.type==="settings")return wrap(<SettingsModal ghConfig={ghConfig} stravaConfig={stravaConfig} setStravaConfig={setStravaConfig} onSave={saveGhConfig} onClear={clearGhConfig} onClose={close}/>);
+  return null;
+}
+
+function LogModal({store,compound,onClose,onSave}){
+  const[f,setF]=useState({compoundId:compound?.id||"",dose:compound?compound.defaultDose.toString():"",site:"",notes:"",datetime:nowDT()});
+  const c=store.compounds.find(x=>x.id===f.compoundId);
+  return(<>
+    <div style={S.modalTitle}>Log Dose</div>
+    <label style={S.label}>Compound</label>
+    <select style={S.select} value={f.compoundId} onChange={e=>{const c=store.compounds.find(x=>x.id===e.target.value);setF(p=>({...p,compoundId:e.target.value,dose:c?c.defaultDose.toString():""}));}}>
+      <option value="">— Select —</option>{store.compounds.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+    </select>
+    <label style={S.label}>Dose ({c?.unit||"unit"})</label>
+    <input style={S.input} type="number" step="any" inputMode="decimal" value={f.dose} onChange={e=>setF(p=>({...p,dose:e.target.value}))}/>
+    <label style={S.label}>Date & Time</label>
+    <input style={S.input} type="datetime-local" value={f.datetime} onChange={e=>setF(p=>({...p,datetime:e.target.value}))}/>
+    <label style={S.label}>Injection Site</label>
+    <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:12}}>{INJECTION_SITES.map(s=><button key={s} style={S.siteChip(f.site===s)} onClick={()=>setF(p=>({...p,site:p.site===s?"":s}))}>{s}</button>)}</div>
+    <label style={S.label}>Notes</label>
+    <input style={S.input} placeholder="optional" value={f.notes} onChange={e=>setF(p=>({...p,notes:e.target.value}))}/>
+    <Buttons onClose={onClose} onSave={()=>onSave(f)} saveLabel="Log"/>
+  </>);
+}
+
+function CompoundModal({onClose,onSave}){
+  const[f,setF]=useState({name:"",type:"trt",unit:"mg",defaultDose:"",color:"#7fff6b",frequency:"weekly"});
+  return(<>
+    <div style={S.modalTitle}>Add Compound</div>
+    <label style={S.label}>Name</label>
+    <input style={S.input} value={f.name} onChange={e=>setF(p=>({...p,name:e.target.value}))}/>
+    <label style={S.label}>Type</label>
+    <select style={S.select} value={f.type} onChange={e=>setF(p=>({...p,type:e.target.value}))}>{TYPE_OPTIONS.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}</select>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+      <div><label style={S.label}>Default Dose</label><input style={S.input} type="number" step="any" inputMode="decimal" value={f.defaultDose} onChange={e=>setF(p=>({...p,defaultDose:e.target.value}))}/></div>
+      <div><label style={S.label}>Unit</label><select style={S.select} value={f.unit} onChange={e=>setF(p=>({...p,unit:e.target.value}))}>{["mg","mcg","IU","ml"].map(u=><option key={u}>{u}</option>)}</select></div>
+    </div>
+    <label style={S.label}>Frequency</label>
+    <select style={S.select} value={f.frequency} onChange={e=>setF(p=>({...p,frequency:e.target.value}))}>{FREQ_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select>
+    <label style={S.label}>Colour</label>
+    <div style={{display:"flex",gap:8,marginBottom:18,flexWrap:"wrap"}}>{SWATCHES.map(c=><div key={c} onClick={()=>setF(p=>({...p,color:c}))} style={{width:26,height:26,borderRadius:"50%",background:c,cursor:"pointer",border:f.color===c?"3px solid #fff":"3px solid transparent",boxShadow:f.color===c?`0 0 10px ${c}`:"none",transition:"all 0.15s"}}/>)}</div>
+    <Buttons onClose={onClose} onSave={()=>onSave(f)} saveLabel="Add"/>
+  </>);
+}
+
+function CycleModal({cycle,onClose,onSave}){
+  const[f,setF]=useState({name:cycle?.name||"",phase:cycle?.phase||"cut",startDate:cycle?.startDate||today(),endDate:cycle?.endDate||"",notes:cycle?.notes||""});
+  return(<>
+    <div style={S.modalTitle}>{cycle?"Edit Cycle":"New Cycle"}</div>
+    <label style={S.label}>Name</label>
+    <input style={S.input} placeholder="e.g. Cut 2026, Grow 25-26" value={f.name} onChange={e=>setF(p=>({...p,name:e.target.value}))}/>
+    <label style={S.label}>Phase</label>
+    <select style={S.select} value={f.phase} onChange={e=>setF(p=>({...p,phase:e.target.value}))}>{PHASE_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+      <div><label style={S.label}>Start Date</label><input style={S.input} type="date" value={f.startDate} onChange={e=>setF(p=>({...p,startDate:e.target.value}))}/></div>
+      <div><label style={S.label}>End Date</label><input style={S.input} type="date" value={f.endDate} onChange={e=>setF(p=>({...p,endDate:e.target.value}))} placeholder="leave blank if ongoing"/></div>
+    </div>
+    <label style={S.label}>Notes</label>
+    <textarea style={{...S.input,minHeight:60,resize:"vertical"}} value={f.notes} onChange={e=>setF(p=>({...p,notes:e.target.value}))}/>
+    <Buttons onClose={onClose} onSave={()=>onSave(f)} saveLabel={cycle?"Save":"Create"}/>
+  </>);
+}
+
+function BodyModal({onClose,onSave}){
+  const[f,setF]=useState({date:today(),weight:"",bf:"",notes:""});
+  return(<>
+    <div style={S.modalTitle}>Log Weight & BF</div>
+    <label style={S.label}>Date</label><input style={S.input} type="date" value={f.date} onChange={e=>setF(p=>({...p,date:e.target.value}))}/>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+      <div><label style={S.label}>Weight (kg)</label><input style={S.input} type="number" step="0.1" inputMode="decimal" value={f.weight} onChange={e=>setF(p=>({...p,weight:e.target.value}))}/></div>
+      <div><label style={S.label}>BF (%)</label><input style={S.input} type="number" step="0.1" inputMode="decimal" value={f.bf} onChange={e=>setF(p=>({...p,bf:e.target.value}))}/></div>
+    </div>
+    <label style={S.label}>Notes</label><input style={S.input} placeholder="optional" value={f.notes} onChange={e=>setF(p=>({...p,notes:e.target.value}))}/>
+    <Buttons onClose={onClose} onSave={()=>onSave(f)} saveLabel="Save"/>
+  </>);
+}
+
+function BloodsModal({bpOnly,onClose,onSave}){
+  const[f,setF]=useState({date:today(),bp_sys:"",bp_dia:"",notes:"",...Object.fromEntries(BLOOD_KEYS.map(k=>[k,""]))});
+  return(<>
+    <div style={S.modalTitle}>{bpOnly?"Log BP":"Log Blood Panel"}</div>
+    <label style={S.label}>Date</label><input style={S.input} type="date" value={f.date} onChange={e=>setF(p=>({...p,date:e.target.value}))}/>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+      <div><label style={S.label}>BP Systolic</label><input style={S.input} type="number" inputMode="numeric" value={f.bp_sys} onChange={e=>setF(p=>({...p,bp_sys:e.target.value}))}/></div>
+      <div><label style={S.label}>BP Diastolic</label><input style={S.input} type="number" inputMode="numeric" value={f.bp_dia} onChange={e=>setF(p=>({...p,bp_dia:e.target.value}))}/></div>
+    </div>
+    {!bpOnly&&<>
+      <div style={{fontSize:10,color:"var(--muted)",letterSpacing:"0.15em",textTransform:"uppercase",marginTop:8,marginBottom:6}}>Hormone Panel</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        {["test","shbg","freeAndro","lh","oest","prolactin","fsh","albumin"].map(k=>{const r=NHS_RANGES[k];return<div key={k}><label style={{...S.label,marginBottom:3}}>{r.label} <span style={{textTransform:"none",color:"rgba(255,255,255,0.25)"}}>({r.unit})</span></label><input style={{...S.input,marginBottom:8}} type="number" step="any" inputMode="decimal" value={f[k]} onChange={e=>setF(p=>({...p,[k]:e.target.value}))}/></div>;})}
+      </div>
+      <div style={{fontSize:10,color:"var(--muted)",letterSpacing:"0.15em",textTransform:"uppercase",marginTop:8,marginBottom:6}}>Lipids & Liver</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        {["hdl","ldl","totalChol","alt","ast"].map(k=>{const r=NHS_RANGES[k];return<div key={k}><label style={{...S.label,marginBottom:3}}>{r.label} <span style={{textTransform:"none",color:"rgba(255,255,255,0.25)"}}>({r.unit})</span></label><input style={{...S.input,marginBottom:8}} type="number" step="any" inputMode="decimal" value={f[k]} onChange={e=>setF(p=>({...p,[k]:e.target.value}))}/></div>;})}
+      </div>
+    </>}
+    <Buttons onClose={onClose} onSave={()=>onSave(f)} saveLabel="Save"/>
+  </>);
+}
+
+function MacrosModal({onClose,onSave}){
+  const[f,setF]=useState({date:today(),kcal:"",protein:"",carbs:"",fat:""});
+  return(<>
+    <div style={S.modalTitle}>Log Macros</div>
+    <label style={S.label}>Date</label><input style={S.input} type="date" value={f.date} onChange={e=>setF(p=>({...p,date:e.target.value}))}/>
+    <label style={S.label}>Calories (kcal)</label><input style={S.input} type="number" inputMode="numeric" value={f.kcal} onChange={e=>setF(p=>({...p,kcal:e.target.value}))}/>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+      <div><label style={S.label}>Protein (g)</label><input style={S.input} type="number" inputMode="numeric" value={f.protein} onChange={e=>setF(p=>({...p,protein:e.target.value}))}/></div>
+      <div><label style={S.label}>Carbs (g)</label><input style={S.input} type="number" inputMode="numeric" value={f.carbs} onChange={e=>setF(p=>({...p,carbs:e.target.value}))}/></div>
+      <div><label style={S.label}>Fat (g)</label><input style={S.input} type="number" inputMode="numeric" value={f.fat} onChange={e=>setF(p=>({...p,fat:e.target.value}))}/></div>
+    </div>
+    <Buttons onClose={onClose} onSave={()=>onSave(f)} saveLabel="Save"/>
+  </>);
+}
+
+function ImportModal({onClose,onConfirm}){
+  return(<>
+    <div style={S.modalTitle}>Import Historical Data</div>
+    <div style={{fontSize:12,color:"var(--muted)",lineHeight:1.7,marginBottom:18}}>
+      This will load <strong style={{color:"var(--accent)"}}>seed-data.json</strong> from the same folder as this page (i.e. your GitHub Pages site root) and merge it with your current data.<br/><br/>
+      <strong style={{color:"var(--text)"}}>What gets imported:</strong><br/>
+      · 3 cycles (Cut 2025, Grow 25-26, Cut 2026)<br/>
+      · ~1,090 dose entries<br/>
+      · 23 weigh-ins<br/>
+      · 20 blood panels<br/><br/>
+      Existing data on the same date will not be overwritten. Any compound names not yet in your list will be added.<br/><br/>
+      <span style={{color:"#ff6b35"}}>⚠ Make sure <code>seed-data.json</code> is uploaded to your repo first.</span>
+    </div>
+    <Buttons onClose={onClose} onSave={onConfirm} saveLabel="Import"/>
+  </>);
+}
+
+function SettingsModal({ghConfig,stravaConfig,setStravaConfig,onSave,onClear,onClose}){
+  const[gh,setGh]=useState(ghConfig);
+  const[sv,setSv]=useState(stravaConfig);
+  const ghOk=gh.owner&&gh.repo&&gh.token;
+  function saveStrava(){
+    setStravaConfig(sv);
+    localStorage.setItem(STRAVA_CONFIG_KEY,JSON.stringify(sv));
+  }
+  return(<>
+    <div style={S.modalTitle}>⚙ Settings</div>
+
+    <div style={{fontSize:11,color:"var(--accent)",letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:8,marginTop:4}}>GitHub Sync</div>
+    <div style={{background:"rgba(0,212,255,0.05)",border:"1px solid rgba(0,212,255,0.15)",borderRadius:8,padding:12,marginBottom:12,fontSize:11,lineHeight:1.7,color:"rgba(255,255,255,0.55)"}}>
+      Generate a fine-grained Personal Access Token at github.com → Settings → Developer settings → Fine-grained tokens. Repository access: select your TRT repo. Permissions: <strong style={{color:"var(--text)"}}>Contents → Read and write</strong>.
+    </div>
+    <label style={S.label}>GitHub Username</label><input style={S.input} value={gh.owner} onChange={e=>setGh(p=>({...p,owner:e.target.value}))}/>
+    <label style={S.label}>Repository</label><input style={S.input} value={gh.repo} onChange={e=>setGh(p=>({...p,repo:e.target.value}))}/>
+    <label style={S.label}>Personal Access Token</label><input style={S.input} type="password" value={gh.token} onChange={e=>setGh(p=>({...p,token:e.target.value}))}/>
+    <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginBottom:24}}>
+      {ghOk&&<button style={{...S.btnDanger,fontSize:11}} onClick={()=>{onClear();onClose();}}>Disconnect</button>}
+      <button style={S.btn()} onClick={()=>{onSave(gh);onClose();}}>Save GitHub</button>
+    </div>
+
+    <div style={{fontSize:11,color:"var(--accent2)",letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:8,borderTop:"1px solid var(--border)",paddingTop:18}}>Strava (via Cloudflare Worker)</div>
+    <div style={{background:"rgba(127,255,107,0.05)",border:"1px solid rgba(127,255,107,0.15)",borderRadius:8,padding:12,marginBottom:12,fontSize:11,lineHeight:1.7,color:"rgba(255,255,255,0.55)"}}>
+      Setup once: deploy <code>worker.js</code> to Cloudflare Workers (free), set <code>STRAVA_CLIENT_ID</code> and <code>STRAVA_CLIENT_SECRET</code> as Worker secrets, paste the Worker URL below, then tap Authorise. See README for the full walkthrough.
+    </div>
+    <label style={S.label}>Worker URL</label><input style={S.input} placeholder="https://protocol-strava.YOURNAME.workers.dev" value={sv.workerUrl} onChange={e=>setSv(p=>({...p,workerUrl:e.target.value}))}/>
+    {sv.refreshToken?<div style={{fontSize:11,color:"#7fff6b",marginBottom:10}}>✓ Connected · last sync {sv.lastSync?fmt(sv.lastSync):"never"}</div>:<div style={{fontSize:11,color:"var(--muted)",marginBottom:10}}>○ Not connected</div>}
+    <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+      <button style={S.btn()} onClick={saveStrava}>Save URL</button>
+      <button style={{...S.btn(),background:"rgba(127,255,107,0.12)",color:"#7fff6b",borderColor:"rgba(127,255,107,0.3)"}} onClick={()=>{if(!sv.workerUrl){alert("Set Worker URL first");return;}saveStrava();stravaAuth(sv.workerUrl);}}>Authorise Strava</button>
+      {sv.refreshToken&&<button style={{...S.btnDanger,fontSize:11}} onClick={()=>{const c={...sv,refreshToken:"",lastSync:null};setSv(c);setStravaConfig(c);localStorage.setItem(STRAVA_CONFIG_KEY,JSON.stringify(c));}}>Disconnect Strava</button>}
+    </div>
+
+    <div style={{display:"flex",justifyContent:"flex-end",marginTop:18,borderTop:"1px solid var(--border)",paddingTop:14}}>
+      <button style={S.btnCancel} onClick={onClose}>Close</button>
+    </div>
+  </>);
+}
+
+function Buttons({onClose,onSave,saveLabel="Save"}){
+  return<div style={{display:"flex",justifyContent:"flex-end",marginTop:8}}>
+    <button style={S.btnCancel} onClick={onClose}>Cancel</button>
+    <button style={S.btn()} onClick={onSave}>{saveLabel}</button>
+  </div>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
 </html>
